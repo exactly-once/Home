@@ -21,4 +21,20 @@ At the system design level this causes obvious trouble. Messages flowing in the 
 
 In a message-based system the sate of the system evolves with each message being processed. A message lands in a queue, a receiver picks the message and acts on it making changes to it's internal state and possibly publishing new messages. There are two resources at play here: the storage used to store business data and the messaging infrastructure. At the business domain level all those operations are an atomic unit - either all should succeed or none. 2PC protocol solved just that, it provided an atomicity guarantee for the logical operations spanning multiple resources. With 2PC gone this has to be provided in some other way. 
 
-## What could go wrong?
+## Anomalies
+  
+We already talked about possible anomalies caused by at-least-once message delivery - business actions get triggered multiple times duplicating actions that should happen only once. 
+
+Lack of atomicity means that we can end-up with partial change application. In most general case the set of operations consists of business data modifications, input message acknowledgement, and number of send operations. Depending on implementation and failure scenario we can end-up any subset of the operations being applied - no operations and all of them being a special cases. Let's look into some of those scenarios more concretely.
+
+ * Lost message I - when input message gets acknowledged any none of the other operations succeed,
+ * Lost message II - when none of the outgoing messages get sent,
+ * Ghost messages - when outgoing messages get sent but business data modifications fail,
+ * Duplicates - when all operations succeed except input message acknowledgement which causes redelivery.
+ 
+We already know what are potential consequences of message duplicates. Message loss scenarios can cause missing data as well as business processes getting stuck. Finally, ghost messages cause sate inconsistencies as a receiver of such messages acts on a piece of data that doesn't exist anywhere else. Imagine situation when order in processed however due to a failure a ghost `ShipOrder` command is sent containing an `OrderId` than never got to the business data storage.
+
+
+
+
+
