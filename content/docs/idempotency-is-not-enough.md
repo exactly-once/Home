@@ -6,7 +6,7 @@ Idempotency can be a useful property when building distributed systems. It's eas
 
 ## Unboxing idempotency
 
-There are couple definitions of idempotency but the one we will use here states that: 
+There are a couple of definitions of idempotency but the one we will use here states that: 
 
 > An operation `f` is idempotent if `f(f(x)) = f(x)`. 
 
