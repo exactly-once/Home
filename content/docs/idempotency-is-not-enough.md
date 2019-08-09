@@ -12,7 +12,7 @@ There are a couple of definitions of idempotency but the one we will use here st
 
 Put differently, this means that no matter how many times the operation is applied on input `x` the outcome is the same as if the operation was performed only once. 
 
-In order to get some intuition let's figure out what `f` and `x` stand for in practice. To cover different flavours of practical architectures let's assume that our system consists of number of endpoints. Each endpoint owns distinct piece of state and the only way for the endpoints to communicate is by sending messages. Every endpoint processes input messages one by one modifying it's internal state and producing new messages (1).
+In order to get some intuition let's figure out what `f` and `x` stand for in practice. To cover different flavours of practical architectures let's assume that our system consists of a number of endpoints. Each endpoint owns a distinct piece of state and the only way for the endpoints to communicate is by sending messages. Every endpoint processes input messages one by one, modifying it's internal state and producing new messages (1).
 
 *Diagram*: endpoint with state that processes a message multiple times
 
