@@ -83,7 +83,7 @@ void Handle(Hit message)
 
 This operation is idempotent but is far from enough in light of possible message duplication. Duplicated `FireAt` messages will result in duplicated `Hit` messages that are indistinguishable from the `LeaderBoard` perspective. We end-up with all operations being idempotent yet with a serious flaw in our system.
 
-What we need is ability to recognize duplicates at the business level and to be able to that we need some business level identify for each one of them. In other words we need logical message identifiers to be able to cope with duplicates at the logic level. 
+What we need is ability to recognize duplicates at the business level and, to be able to that, we need some business level identity for each one of them. In other words we need logical message identifiers to be able to cope with duplicates at the logic level. 
 
 This can be done if we assume that `FireAt` message gets extends with e.g. `AttemptId` property that than gets passed to the `Hit` event. With that in place `LeaderBoard` logic becomes:
 
