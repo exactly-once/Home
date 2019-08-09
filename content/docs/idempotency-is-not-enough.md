@@ -68,7 +68,7 @@ void Handle(FireAt message)
 
 Now whenever the target gets hit we choose the new position randomly. Not and overly fancy change, yet enough to break idempotency. The indeterminism introduced by `new Rand().Next(MaxLocation)` makes each re-processing of the same message likely to result in different `ShootingTarget` position.
 
-What this shows is an instance of a broader scenario. Whenever the logic depends on values outside of our control that can change between exectusion the operation is no longer idempotent. This includes not only random numbers, but things like Guids, local clock values, results of queries to the local file system or remote APIs. If you depend on time or guid identifiers you need to make then deterministics (1). 
+What this shows is an instance of a broader scenario. Whenever the logic depends on values outside of our control that can change between executions, the operation is no longer idempotent. This includes not only random numbers, but things like GUIDs, local clock values, results of queries to the local file system or remote APIs. If you depend on time or GUID identifiers you need to make then deterministic (1). 
 
 ## Leader board (idempotency but with ids)
 
