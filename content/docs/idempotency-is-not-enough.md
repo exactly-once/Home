@@ -2,7 +2,7 @@ TL;DR; Achieving idempotency with business logic code is non-trivial and fragile
 
 ## Introduction
 
-Idempotency can be a useful property when building distributed systems. It's easier said than done however to write idempotent code and keep it so under changing requirements. Finally, generic idempotency is not enough to deal with basic characteristics of communication in distributed systems.
+Idempotency can be a useful property when building distributed systems. It's easier said than done, however, to write idempotent code and keep it so under changing requirements. Finally, generic idempotency is not enough to deal with basic characteristics of communication in distributed systems.
 
 ## Unboxing idempotency
 
