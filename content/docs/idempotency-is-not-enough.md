@@ -20,7 +20,7 @@ In this context `f` stands for business logic executed when a message gets proce
 
 ## Shoot the target
 
-It's worth going through a trivial example to see what does idempotency means in a more concrete settings. Let's imagine that our system models a moving target shooting range. It consists of a single `ShootingRange` endpoint which stores shooting target's location `{int: ShootingTarget}` and processes `FireAt : { int: Target }` messages. Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `Missed` event to indicate the result.
+It's worth going through a trivial example to see what does idempotency mean in a more concrete settings. Let's imagine that our system models a moving target shooting range. It consists of a single `ShootingRange` endpoint which stores shooting target's location `{int: ShootingTarget}` and processes `FireAt : { int: Target }` messages. Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `Missed` event to indicate the result.
 
 The logic executed when `FireAt` gets process is:
 
