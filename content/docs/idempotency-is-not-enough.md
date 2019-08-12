@@ -56,7 +56,7 @@ This implementation is idempotent but doesn't meet business requirements. With t
 
 The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values (3).
 
-This can be done if we assume that `FireAt` message gets extends with e.g. `AttemptId` property that than gets passed to the `Hit` event. With that in place `LeaderBoard` logic becomes:
+If we extend `FireAt` message with `AttemptId` property (unique for each logical try the player makes) it can be used as a identifier for the `Hit` event. With that in place `LeaderBoard` logic becomes:
 
 ``` C#
 void Handle(Hit message)
@@ -65,22 +65,22 @@ void Handle(Hit message)
     {
         return;
     }
-
     this.Hits.Add(message.AttemptId);
+    
     this.NumberOfHits++;
 }
 ```
 
-What this trivial scenario shows is that generic idempotency is not enough to deal with message duplicates. We need business level identifiers to deal with duplicated messages.
+What this trivial scenario shows is that generic idempotency is not enough to deal with message duplicates. Business level identifiers are a must.
 
-## Stats endpoint (idempotency with re-ordering is not enough!) (game controller )
+## Stats endpoint (re-ordering requires exactly-once processing)
 
-Now let's add one more moving piece to our system - `GameScenario` endpoint that changes current location of the moving target using `MoveTarget` message. Now the `ShootingRange` logic becomes:
+Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target using `MoveTarget` message making `ShootingRange` implementation:
 
 ``` C#
 void Handle(FireAt message)
 {
-    if(this.ShootingTarget == message.Target) 
+    if(this.TargetPosition == message.Position) 
     {
         Publish(new Hit { AttemptId = message.AttemptId });
     }
@@ -92,15 +92,53 @@ void Handle(FireAt message)
 
 void Handle(MoveTarget message)
 {
-    this.ShootingTarget = message.Location;
+    this.TargetPosition = message.Position;
 }
 ```
 
-Let's analyze one possible scenarion in which both `FireAt` and `MoveTarget` messages get processed. At the beginning the `ShootingTarget` equals `42`, the palyers sends `FireAt : {Target: 42}` and `GameScenario` sends `MoveTarget : {Location: 1}`. Due to possible delivery characteristics (duplication and re-ordering) what happens is that `FireAt` gets processed first, than `MoveTarget` and finally a duplicate of `FireAt`. 
+Let's analyze one possible scenarion in which both `FireAt` and `MoveTarget` messages get processed. At the beginning the `TargetPosition` equals `42`, the player sends `FireAt : { Postion: 42}` and `GameScenario` sends `MoveTarget : {Position: 1}`. Due to delivery characteristics (duplication and re-ordering) what happens is that `FireAt` gets processed first, than `MoveTarget` and finally a duplicate of `FireAt`. 
 
-This results in two messages being published by the `ShootingRange` i.e. `Hit` and `Miss` both for the same logical `FireAt` message. Our operations are idempotent, yet we ended up with two messages representing two contradictory facts about the same attempt. We did not end-up with an unexpected state. Worse than that, we ended up in a state which indicates that two logically exclusive alternatives occured. 
+*Diagram*: show how the messages get processed and results
 
-Why didn't idempotency help us? The reason is that the same operation was performed on different state. Idempotency describes what happens for duplicated, successive message processing which is not the case here. In the context of our definition, `x` for both invocations was different. First it was the old value of `ShootingTarget` i.e. `42` and later the new one i.e `1`. 
+This results in two messages being published by the `ShootingRange` - `Hit` and `Miss` both for the same logical `FireAt` message. Our operations are idempotent, our messages have well defined business identity, yet **we ended up with two messages representing two contradictory facts about the same attempt**. 
+
+We didn't end-up with an unexpected state e.g. with an attempt resulting with miss when we expected a hit. It's far worse than that! We ended up in a state which indicates that two logically exclusive alternatives occured. A state which is invalid by any standard.
+
+### Exactly-once processing
+
+Why didn't idempotency help us? It's because `FireAt` duplciate was processed using a different version of `ShootingRage` state than the first time. Idempotency describes what happens for duplicated, **successive** message processing. It has nothing to do with the same operation being peformed on a different inputs which is the case here. The value of `x` from the deffintion was different in each processing. First it was the old value of `TargetPosition` i.e. `42` and later the new one i.e `1`. 
+
+TODO: What we need here is a stronger notion of idempotency - one that gives us `exectly-once` over duplicates.
+
+### Business level exactly-once
+
+TODO: this is very hard and impractical
+
+Idempotency is quite fragile and easy to break - even in our trivial system. Let's imagine that we decided to change the target's position with each `FireAt` event. We could start off setting the new position to be the same as `Target` value in the message. Is this still idempotent? Sure. The content of input message is immutable to the new position will always be the same. 
+
+What if we tweaked the logic this way:
+
+``` C#
+void Handle(FireAt message)
+{
+    if(this.ShootingTarget == message.Target) 
+    {
+        this.ShootingTarget = new Rand().Next(MaxLocation);
+
+        Publish(new Hit());
+    }
+    else
+    {
+        Publish(new Missed());
+    } 
+}
+```
+
+Now whenever the target gets hit we choose the new position randomly. Not and overly fancy change, yet enough to break idempotency. The indeterminism introduced by `new Rand().Next(MaxLocation)` makes each re-processing of the same message likely to result in different `ShootingTarget` position.
+
+What this shows is an instance of a broader scenario. Whenever the logic depends on values outside of our control that can change between executions, the operation is no longer idempotent. This includes not only random numbers, but things like GUIDs, local clock values, results of queries to the local file system or remote APIs. If you depend on time or GUID identifiers you need to make then deterministic (1). 
+
+### Infrastructue level exactly-once
 
 One, theoretical option, to fix this would be to keep historical versions of the state and map them to business level message identifier. So if a duplciate arrives it operates on the exactly same state as the first copy of the message processed. Alternativelly, we could keep track of all messages processed and make processing operation no-op for any duplicates that arrive:
 
@@ -129,33 +167,9 @@ void Handle(FireAt message)
 
 In fact we should probably do the same for `MoveTarget` handler.
 
-## Target moves (fragile idempotency)
-
-Idempotency is quite fragile and easy to break - even in our trivial system. Let's imagine that we decided to change the target's position with each `FireAt` event. We could start off setting the new position to be the same as `Target` value in the message. Is this still idempotent? Sure. The content of input message is immutable to the new position will always be the same. 
-
-What if we tweaked the logic this way:
-
-``` C#
-void Handle(FireAt message)
-{
-    if(this.ShootingTarget == message.Target) 
-    {
-        this.ShootingTarget = new Rand().Next(MaxLocation);
-
-        Publish(new Hit());
-    }
-    else
-    {
-        Publish(new Missed());
-    } 
-}
-```
-
-Now whenever the target gets hit we choose the new position randomly. Not and overly fancy change, yet enough to break idempotency. The indeterminism introduced by `new Rand().Next(MaxLocation)` makes each re-processing of the same message likely to result in different `ShootingTarget` position.
-
-What this shows is an instance of a broader scenario. Whenever the logic depends on values outside of our control that can change between executions, the operation is no longer idempotent. This includes not only random numbers, but things like GUIDs, local clock values, results of queries to the local file system or remote APIs. If you depend on time or GUID identifiers you need to make then deterministic (1). 
-
 ## Summary
+
+TODO: we didn't talk about failures, and storage requirements. We will tackle that next.
 
 As we could see in this post idempotency is hard to manage at the business level and easy to break by accident. What is even more important is that in practical applications generic idempotency is too weak to protect us from anomalies caused by the communication infrastructure. 
 
