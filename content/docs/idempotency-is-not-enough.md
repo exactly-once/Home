@@ -1,8 +1,5 @@
-TL;DR; Achieving idempotency with business logic code is non-trivial and fragile. And even if done correctly, is not enough to build roboust distributed systems.
-
 ## Introduction
-
-Idempotency can be a useful property when building distributed systems. It's easier said than done, however, to write idempotent code and keep it so under changing requirements. Finally, generic idempotency is not enough to deal with basic characteristics of communication in distributed systems.
+[Delivery guarantees](TODO: link-to-previous-post) of modern messaging infrastructures make it non-trivial to build roboust distributed systems. This post goes through problems that system builders have to tackle and see how idempotency can help. Not some generic idempotency though but quite a special flavour. 
 
 ## Unboxing idempotency
 
@@ -10,7 +7,7 @@ There are a couple of definitions of idempotency but the one we will use here st
 
 > An operation `f` is idempotent if `f(f(x)) = f(x)`. 
 
-Put differently, this means that no matter how many times the operation is applied on input `x` the outcome is the same as if the operation was performed only once. 
+Put differently, this means that no matter how many times the operation is applied on input `x` the outcome is the same as if the operation was performed just once. 
 
 In order to get some intuition let's figure out what `f` and `x` stand for in practice. To cover different flavours of practical architectures let's assume that our system consists of a number of endpoints. Each endpoint owns a distinct piece of state and the only way for the endpoints to communicate is by sending messages. Every endpoint processes input messages one by one, modifying it's internal state and producing new messages (1).
 
@@ -20,14 +17,14 @@ In this context `f` stands for business logic executed when a message gets proce
 
 ## Shoot the target
 
-It's worth going through a trivial example to see what does idempotency mean in a more concrete settings. Let's imagine that our system models a moving target shooting range. It consists of a single `ShootingRange` endpoint which stores shooting target's location `{int: ShootingTarget}` and processes `FireAt : { int: Target }` messages. Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `Missed` event to indicate the result.
+It's worth going through a trivial example to see what does idempotency mean in a more concrete settings. Let's imagine that our system models a moving target shooting range. It consists of a single `ShootingRange` endpoint which stores shooting target's location `{int: TargetPosition }` and processes `FireAt : { int: Position }` messages. Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `Missed` event to indicate the result.
 
-The logic executed when `FireAt` gets process is:
+The logic executed for `FireAt` messages is:
 
 ``` C#
 void Handle(FireAt message)
 {
-    if(this.ShootingTarget == message.Target) 
+    if(this.TargetPosition == message.Position) 
     {
         Publish(new Hit());
     }
@@ -38,41 +35,15 @@ void Handle(FireAt message)
 }
 ```
 
-For any concrete `FireAt` message, say `FireAt : { Target = 42 }` and moving target at location `2`, the execution of business logic can be written as:
+For any concrete `FireAt`, say `FireAt : { Position = 42 }` and moving target at position `2`, the execution of business logic can be written as:
 
-> f_[Target=42]: {ShootingTarget=2}-> ({ShootingTarget=2}, {`Missed`})
+> f_[Position=42]: {TargetPosition=2} -> ({TargetPosition=2}, {`Missed`})
 
-Looking at the message handling logic it's easy to see that for any value of `Target` in the `FireAt` message the execution logic satisfies the idempotency property i.e. no matter how many times the message gets processed the result is the same as if it was process exactly once. 
+Looking at the message handling logic it's easy to see that for any value of `Position` in the `FireAt` message the execution logic satisfies the idempotency property i.e. no matter how many times the message gets processed the result is the same as if it was process exactly once. 
 
-## Target moves (fragile idempotency)
+## Leader board (idempotency but with Ids)
 
-Idempotency is quite fragile and easy to break - even in our trivial system. Let's imagine that we decided to change the target's position with each `FireAt` event. We could start off setting the new position to be the same as `Target` value in the message. Is this still idempotent? Sure. The content of input message is immutable to the new position will always be the same. 
-
-What if we tweaked the logic this way:
-
-``` C#
-void Handle(FireAt message)
-{
-    if(this.ShootingTarget == message.Target) 
-    {
-        this.ShootingTarget = new Rand().Next(MaxLocation);
-
-        Publish(new Hit());
-    }
-    else
-    {
-        Publish(new Missed());
-    } 
-}
-```
-
-Now whenever the target gets hit we choose the new position randomly. Not and overly fancy change, yet enough to break idempotency. The indeterminism introduced by `new Rand().Next(MaxLocation)` makes each re-processing of the same message likely to result in different `ShootingTarget` position.
-
-What this shows is an instance of a broader scenario. Whenever the logic depends on values outside of our control that can change between executions, the operation is no longer idempotent. This includes not only random numbers, but things like GUIDs, local clock values, results of queries to the local file system or remote APIs. If you depend on time or GUID identifiers you need to make then deterministic (1). 
-
-## Leader board (idempotency but with ids)
-
-Let's extend our system with a second endpoint i.e. `LeaderBoard` that's responsible for storing the number of unique target hits for the player. New endpoint will subscribe and process `Hit` events generated by the `ShootingRange`:
+Let's extend our system with a second `LeaderBoard` endpoint that's responsible for storing number of unique target hits for the player. The endpoint processes `Hit` messages generated by the `ShootingRange`:
 
 ``` C# 
 void Handle(Hit message)
@@ -81,9 +52,9 @@ void Handle(Hit message)
 }
 ```
 
-This operation is idempotent but is far from enough in light of possible message duplication. Duplicated `FireAt` messages will result in duplicated `Hit` messages that are indistinguishable from the `LeaderBoard` perspective. We end-up with all operations being idempotent yet with a serious flaw in our system.
+This implementation is idempotent but doesn't meet business requirements. With the current message payload there is no way for `LeaderBoard` to distinguish two logically different `FireAt` messages from two duplicates generated by the infrastructure. When `LeaderBoard` receives `Hit` message it has no way to tell if there's been a hit made by the palyer or if it's just duplicate of some other `Hit` message already processed.
 
-What we need is ability to recognize duplicates at the business level and, to be able to that, we need some business level identity for each one of them. In other words we need logical message identifiers to be able to cope with duplicates at the logic level. 
+The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values (3).
 
 This can be done if we assume that `FireAt` message gets extends with e.g. `AttemptId` property that than gets passed to the `Hit` event. With that in place `LeaderBoard` logic becomes:
 
@@ -158,6 +129,32 @@ void Handle(FireAt message)
 
 In fact we should probably do the same for `MoveTarget` handler.
 
+## Target moves (fragile idempotency)
+
+Idempotency is quite fragile and easy to break - even in our trivial system. Let's imagine that we decided to change the target's position with each `FireAt` event. We could start off setting the new position to be the same as `Target` value in the message. Is this still idempotent? Sure. The content of input message is immutable to the new position will always be the same. 
+
+What if we tweaked the logic this way:
+
+``` C#
+void Handle(FireAt message)
+{
+    if(this.ShootingTarget == message.Target) 
+    {
+        this.ShootingTarget = new Rand().Next(MaxLocation);
+
+        Publish(new Hit());
+    }
+    else
+    {
+        Publish(new Missed());
+    } 
+}
+```
+
+Now whenever the target gets hit we choose the new position randomly. Not and overly fancy change, yet enough to break idempotency. The indeterminism introduced by `new Rand().Next(MaxLocation)` makes each re-processing of the same message likely to result in different `ShootingTarget` position.
+
+What this shows is an instance of a broader scenario. Whenever the logic depends on values outside of our control that can change between executions, the operation is no longer idempotent. This includes not only random numbers, but things like GUIDs, local clock values, results of queries to the local file system or remote APIs. If you depend on time or GUID identifiers you need to make then deterministic (1). 
+
 ## Summary
 
 As we could see in this post idempotency is hard to manage at the business level and easy to break by accident. What is even more important is that in practical applications generic idempotency is too weak to protect us from anomalies caused by the communication infrastructure. 
@@ -170,3 +167,4 @@ Now that we know a bit more about message processing in distributed systems we w
 
 (1) - this covers quite a wide range of systems. Including REST best microservice architectures.
 (2) - Azure Durable Functions
+(3) - similarlity to Value Objects and Entities in DDD
