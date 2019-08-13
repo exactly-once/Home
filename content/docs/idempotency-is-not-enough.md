@@ -9,11 +9,11 @@ There are a couple of definitions of idempotency but the one we will use here st
 
 Put differently, this means that no matter how many times the operation is applied on input `x` the outcome is the same as if the operation was performed just once. 
 
-In order to get some intuition let's figure out what `f` and `x` stand for in practice. Let's assume that our system consists of endpoints, each owning a distinct piece of state. The only way for the endpoints to communicate is by sending messages. Every endpoint processes input messages one by one, modifying it's internal state and producing new messages (1).
+In order to get some intuition let's figure out what `f` and `x` stand for in practice. Let's assume that our system consists of endpoints, each owning a distinct piece of state. Every endpoint processes input messages one by one, modifying it's internal state and producing new messages. Finally, the only way for the endpoints to communicate is by sending messages (1).
 
 *Diagram*: endpoint with state that processes a message multiple times
 
-In this context `f` stands for business logic executed when a message gets processed. `x` on the other hand, represents all resources modified during business logic execution as well as all messages produced. 
+In this context `f` stands for business logic executed when a message gets processed and `x`represents value of the state used during business logic execution as well as messages produced so far. The result of message exectuion i.e. `f(x)` captures the modified version of the state and any messages being produced.  
 
 ## Hit the target
 
@@ -35,9 +35,9 @@ void Handle(FireAt message)
 }
 ```
 
-For any concrete `FireAt`, say `FireAt : { Position = 42 }` and moving target at position `2`, the execution of business logic can be written as:
+For any concrete `FireAt`, say `FireAt : { Position = 42 }` and moving target at position `2`, message processing can be written as:
 
-> f_[FireAt:Position=42]({TargetPosition=2}) = ({TargetPosition=2}, {`Missed`})
+> f_[FireAt:Position=42]({TargetPosition=2}, {}) = ({TargetPosition=2}, {`Missed`})
 
 Looking at the message handling logic it's easy to see that for any value of `Position` in the `FireAt` message the execution logic satisfies the idempotency property i.e. no matter how many times the message gets processed the result is the same as if it was processed exactly once. 
 
@@ -52,7 +52,7 @@ void Handle(Hit message)
 }
 ```
 
-This implementation is idempotent but doesn't meet business requirements. With the current message payload there is no way for `LeaderBoard` to distinguish two logically different `FireAt` messages from two duplicates generated during delivery. When `LeaderBoard` receives `Hit` message it has no way to tell if there's been a new hit or if it's just duplicate of some other `Hit` message already processed.
+This implementation is idempotent but far from meeting business requirements when deployed in any real-world environment. With the current message payload there is no way for `LeaderBoard` to distinguish two logically different `FireAt` messages from two duplicates generated during delivery. When `LeaderBoard` receives `Hit` message it has no way to tell if there's been a new hit or if it's just duplicate of some other `Hit` message already processed.
 
 The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values (3).
 
@@ -75,7 +75,7 @@ Idempotency is not enough to deal with message duplicates. Business level identi
 
 ## Stats endpoint (re-ordering requires exactly-once processing)
 
-Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target using `MoveTarget` message. New message gets handled by `ShootingRange`:
+Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target using `MoveTarget` message. New message is handled by `ShootingRange`:
 
 ``` C#
 void Handle(FireAt message)
@@ -106,28 +106,24 @@ We didn't end-up with an unexpected state e.g. with an attempt resulting with mi
 
 ### Exactly-once processing
 
-Why didn't idempotency help us? It's because `FireAt` duplciate was processed using a different version of `ShootingRage` state than the first time. Idempotency describes what happens for duplicated, **successive** message processing. It has nothing to do with the same operation being peformed on a different inputs which is the case here. The value of `x` from the deffintion was different in the first and the second execution. First it was the initial value of `TargetPosition` i.e. `42` and later the new one i.e `1`. 
+Why didn't idempotency help us? It's because `FireAt` duplciate was processed using a different version of `ShootingRage` state than the first time. Idempotency describes what happens for duplicated, **successive** message processing. It has nothing to do with the same operation being peformed on a different inputs which is the case here. The value of `x` from the definition was different for the first and the second execution. First it was the initial value of `TargetPosition` i.e. `42` and later the new one i.e `1`. 
 
-In order to prevent "alternative-worlds" scenario where the attempt both missed and hit the target, we need to ensure that once a logical message gets processed all duplicates result in consistent observable side-effects i.e. messages produced. In our example we need to guarantee that processing `FireAt` duplicate results an exact copy of the first `Hit` event or that no message is published.
+In order to prevent "alternative-worlds" scenario where the attempt both missed and hit the target, we need to ensure that once a logical message gets processed all duplicates result in consistent observable side-effects i.e. messages produced. In our example we need to guarantee that processing `FireAt` duplicate results in an exact copy of the first `Hit` event or that no message is published.
 
 More generally, we want an endpoint to produce an obervable side-effects identical to some execution in which each logical message gets processed **exactly-once**.  
 
 ### Implementing exactly-once
 
-One approach to implement the requried behavior would be to keep all historical versions of the state indexed by logical messages. With that in place, we could re-process any duplciate using the same state which obviously would produce the same side-effects. Of course, this requries additional storage. 
+One approach to implementing the requried behavior would be to keep all historical versions of the state indexed by logical messages. With that in place, we could re-process any duplciate using the same state which would naturaly produce the same side-effects. Of course, this requries additional storage. 
 
-What is more troublesome is that we would need to ensure we store all the state needed. In practice this includes not only strictly business data but things like system clock value, file-system query results, remote service responses as well as sudo-random data put in the outgoing messages like GUIDs and timestamp just to name a few. Finally, the state needed depends on concrete business logic and would have to be identified separatelly for each and every operation.
+What is more troublesome is the fact that we need to store all pieces of the state needed. In practice this includes not only strictly business data but things like system clock value, file-system query results, remote service responses as well as sudo-random data put in the outgoing messages like GUIDs and timestamp just to name a few. Finally, the state needed depends on concrete business logic and would have to be identified separatelly for each and every operation.
 
-An alternative approach is based on capturing the side-effects and not the state used to produce them. What gets captured are not the historical versions of the state but the messages that got produced when processing a message. For the `FireAt` message this could like this:
+An alternative approach is based on capturing the side-effects and not the state used to produce them. What gets captured are not the historical versions of the state but rather the messages that got produced when processing a message. For the `FireAt` message this could like this:
 
 ``` C#
 void Handle(FireAt message)
 {
-    if(this.SideEffects.Contains(message.AttemptId))
-    {
-        Publish(SideEffects[message.AttemptId]);
-    }
-    else
+    if(this.SideEffects.Contains(message.AttemptId) == false)
     {
         var sideEffects;
         
@@ -141,19 +137,21 @@ void Handle(FireAt message)
         }
         
         SideEffects.Add(message.AttemptId, sideEffect);
-        
-        Publish(SideEffects[message.AttemptId]);
-    } 
+    }
+    
+    Publish(SideEffects[message.AttemptId]);
 }
 ```
 
-This look quite a bit more involved then the previous version. The thing to notice here however is the fact that the side-effects management logic is quite generic and independent of the business logic! This raises an interesting question: can this be done in a generic manner independent of the business logic? We will answer that question in the next post. 
+This look quite a bit more involved then the previous version. The thing to notice here however is the fact that the side-effects management logic is quite generic and independent of the business logic! 
+
+This raises interesting questions: Can this be done in a generic manner, independent of the business logic? Does it requrie any guarantees from the storage used by the endpoint? How much data do we need for the side effects? Those are all interesting topics that we will be covered in the follow-up posts.
 
 ## Summary
 
-Idempotency is often claimed to be a remedy for troubles caused by at-least-once delivery guarantees. In this post we showed that's not neceserily the case unless we talk about stronger version - one that is business identity aware and producess exactly-once side-effects in face of message reordering. 
+Idempotency is often claimed to be a remedy for troubles caused by at-least-once delivery guarantees. In this post we showed that's not neceserily the case unless we talk about it's stronger version - one that is business identity aware and producess exactly-once side-effects in face of message reordering. 
 
-It turns out that what we need is not trivial to implement but might be solvalbe in a generic manner at the level of infrastructural instead of business logic.
+It turns out that what we need is not trivial to implement but might be solvable in a generic manner at the level of infrastructural instead of business logic.
 
 (1) - this covers quite a wide range of systems. Including REST best microservice architectures.
 (2) - Azure Durable Functions
