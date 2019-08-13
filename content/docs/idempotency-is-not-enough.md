@@ -1,5 +1,5 @@
 ## Introduction
-[Delivery guarantees](TODO: link-to-previous-post) of modern messaging infrastructures make it non-trivial to build roboust distributed systems. This post goes through problems that system builders have to tackle and shows how idempotency can help. Not some generic idempotency though but quite a special flavour. 
+(Delivery guarantees)[TODO: link-to-previous-post] of modern messaging infrastructures make it non-trivial to build roboust distributed systems. This post goes through problems that system builders have to tackle and shows how idempotency can help. Not some generic idempotency though but quite a special flavour. 
 
 ## Unboxing idempotency
 
