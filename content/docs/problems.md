@@ -31,12 +31,14 @@ Lack of atomicity means that we can end-up with partial change application. In m
 
 Let's look into some of those scenarios more concretely.
 
- * Lost message I - when input message gets acknowledged and none of the other operations succeed,
- * Lost message II - when none of the outgoing messages get sent,
+ * Input message loss - when input message gets acknowledged and none of the other operations succeed as if input message got lost,
+ * Output message loss - when some of the outgoing messages don't get sent,
  * Ghost messages - when some outgoing messages get sent but business data modifications fail,
  * Duplicates - when all operations succeed except input message acknowledgement which causes redelivery.
  
-We already know what are potential consequences of message duplicates. Message loss scenarios can cause missing data as well as business processes getting stuck. Finally, ghost messages cause sate inconsistencies as a receiver of such messages acts on a piece of data that doesn't exist anywhere else. Imagine situation when order is processed however due to a failure a ghost `ShipOrder` command is sent containing an `OrderId` than never got to the business data storage.
+We already know what are potential consequences of message duplicates. Message loss scenarios can cause missing data as well as business processes getting stuck. Finally, ghost messages cause sate inconsistencies as a receiver of such messages acts on a piece of data that doesn't exist anywhere else. Imagine situation when an order is processed however (due to a failure) a ghost message is sent containing an if than never got to the business data storage.
+
+TODO: realization. No-transactions force us to deal with duplicates => solving no-transactions solves at-least-once delivery anomalies
 
 
 

@@ -2,12 +2,21 @@
 title: Overview
 type: docs
 ---
+TODO: we need to nail down the context:
+ * Persistent messaging,
+ * Performance?
+ * Business model is the key thing here
+ * Mention other approaches here e.g. event-sourcing
 
 # Introduction
 
-Whoever designs and builds message-based distributed systems made of stateful services needs to acknowledge two basic facts of reality i.e. **at-least-once message delivery** and **lack of transactions** between state managed by the service and the messaging infrastructure  (* - this is not some universal ). 
+Whoever architects message-based distributed systems made of services needs to acknowledge two basic facts of reality i.e. **at-least-once message delivery** and **lack of transactions** between the messaging infrastructure and business data storage (* - this is not some universal rule but current status quo). 
 
-This site gathers knowledge on approaches used in the industry to cope with these problems. It targets both specialized audience i.e. people building infrastructure and frameworks as well as software developers in general that seek information on messaging systems.
+This site gathers knowledge on approaches used in the industry to cope with these problems. It targets people building infrastructure and frameworks as well as software developers in general wanting to learn more on messaging systems.
+
+## Context
+
+We will focus here on enterprise systems built with modern cloud and on-prem technologies - systems that come with an interesting tension built-in (TODO: this doesn't read well). Systems that on one hand are critical for business operations hence require high level of reliability and correctness but at the same time generate most value in the area of business domain modeling.      
 
 ## Content
 
