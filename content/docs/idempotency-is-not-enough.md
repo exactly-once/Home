@@ -1,28 +1,35 @@
---- 
-Title: Idempotency is not enough
-Assumptions: The previous post introduces how duplicates and message re-ordering can happen
----
+# Introduction
+(Delivery guarantees)[TODO: link-to-the-previous-post] of modern messaging infrastructures make it non-trivial to build robust distributed systems. 
+ 
+ - We will talk about effects one should expect
+ - We will show those can affect distributed system state on a concrete example 
+ - We will sketch how one can cope with those in real-world systems
 
-## Introduction
-(Delivery guarantees)[TODO: link-to-the-previous-post] of modern messaging infrastructures make it non-trivial to build robust distributed systems. This post goes through problems that system builders have to tackle and shows how idempotency can help. Not some generic idempotency though but quite a special flavor. 
+# A system 
 
-## Unboxing idempotency
+We will assume that systems in focus consists of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying its internal state and producing new messages. Finally, endpoints communicate using persistent messaging with at-least-once delivery guarantee. 
 
-One of the most commonly used definitions of idempotency says that: 
-
-> An operation `f` is idempotent if `f(f(x)) = f(x)`. 
-
-Put differently, this means that no matter how many times an operation is applied on input `x` the outcome is the same as if the operation was performed just once. 
-
-As any mathematical definition this looks a bit dry so it's useful see what `f` and `x` mean in practice. We will assume that our system consists of endpoints, each owning a distinct piece of state. Every endpoint processes input messages one by one, modifying its internal state and producing new messages. Finally, the only way for the endpoints to communicate is by sending messages (1).
+This covers pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-prem and in the cloud (1-0). 
 
 *Diagram*: endpoint with the state that processes a message multiple times
 
-In this context `f` stands for business logic executed when a message gets processed and `x` represents the value of the state used during business logic execution as well as messages produced. The result of message execution i.e. `f(x)` captures the modified version of the state and all messages created. 
+At-least-once delivery means that (no surprise here) any in-flight message gets delivered - possibly multiple times. This is a direct consequence of protocols used for infrastructure-to-receiver communication. A message will be redeliver until it gets acknowledged by the receiver. Even if the receiver got the message and processed it successfully, the message will be send once more if the acknowledgement failed to reach the infrastructure. 
 
-## The system
+Duplicates get created also when messages are sent. Any producer can't assume that a message has been delivered and stored by the infrastructure until it gets an acknowledgement. 
 
-Let's look at a system that models a moving target shooting range. It consists of a single `ShootingRange` endpoint which stores shooting target's location `{ int: TargetPosition }` and processes `FireAt : { int: Position }` messages. 
+Message re-delivery logic executes individually for each message. For example, if there are two in-flight messages and processing fails for the first one the re-delivery will happen with some delay and the other message will be delivered in the meantime (1-1).
+
+There is nothing that prevents duplication and re-ordering from happening at the same. Those two effects combined make any duplication and re-ordering of in-flight messages possible. 
+
+*Diagram*: in-flight messages and possible processings: 1. dups, 2. dups + re-ordering, 3. both
+
+TODO: quick walk through the diagram
+
+# The system
+
+Let's look at a system that models a moving target shooting range to see practical consequences of message duplication and re-ordering. 
+
+We will start with a single `ShootingRange` endpoint which stores shooting target's location `{ int: TargetPosition }` and processes `FireAt : { int: Position }` messages. 
 
 Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `Missed` event to indicate the result:
 
@@ -40,12 +47,6 @@ void Handle(FireAt message)
 }
 ```
 
-For any concrete execution e.g. `FireAt : { Position = 42 }` and `TargetPosition : 2` message processing can be written as:
-
-> f_{`FireAt:Position=42`}({`TargetPosition=2`}, {}) = (`{TargetPosition=2}`, {`Missed`})
-
-Looking at the code it's easy to see that for any values of `FireAt` and `TargetPosition` the execution logic satisfies the idempotency property i.e. no matter how many times the message gets processed the result is the same as if it was processed once. 
-
 ## Duplicates
 
 Let's extend the system with second `LeaderBoard` endpoint that's responsible for storing the number of target hits that the player made. The endpoint processes `Hit` messages generated by the `ShootingRange`:
@@ -57,13 +58,11 @@ void Handle(Hit message)
 }
 ```
 
-The handling logic is idempotent but far from meeting business requirements when deployed in any real-world environment - one that allows duplicates. 
-
-With the current message payload, there is no way for `LeaderBoard` to distinguish two logically different `FireAt` messages from two duplicates generated during delivery. When `LeaderBoard` receives `Hit` message it has no way to tell if there's been a new hit or if it's just duplicate of some other `Hit` message already processed.
+`Hit` message payload, makes it impossible for `LeaderBoard` to distinguish two logically different `FireAt` messages from two duplicates generated during delivery. When `LeaderBoard` receives `Hit` message it has no way to tell if there's been a new hit or if it's just duplicate of some other `Hit` message already processed.
 
 The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values (3).
 
-If we extend `FireAt` message with `AttemptId` property (unique for each attempt the player makes) it can be used as a identifier for the `Hit` event. With that in place `LeaderBoard` logic becomes:
+If we extend `FireAt` message with `AttemptId` property (unique for each attempt the player makes) and we can later use it as a identifier for the `Hit` event. With that in place `LeaderBoard` logic becomes:
 
 ``` C#
 void Handle(Hit message)
@@ -78,13 +77,18 @@ void Handle(Hit message)
 }
 ```
 
-In short, idempotency is not enough to deal with message duplicates. Business level identifiers are a must.
+In short, business level identifiers are a must to cope with duplicates.
 
 ## Re-ordering
 
 Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target by sending `MoveTarget` messages to `ShootingRange`. New message modifies `ShootingRange` internal state:
 
 ``` C#
+void Handle(MoveTarget message)
+{
+    this.TargetPosition = message.Position;
+}
+
 void Handle(FireAt message)
 {
     if(this.TargetPosition == message.Position) 
@@ -96,36 +100,35 @@ void Handle(FireAt message)
         Publish(new Missed { AttemptId = message.AttemptId });
     } 
 }
-
-void Handle(MoveTarget message)
-{
-    this.TargetPosition = message.Position;
-}
 ```
 
-Let's analyze one possible message delivery scenario that incudes `FireAt` and `MoveTarget` messages. Let's assume we begin with `TargetPosition` equal to `42`, the player sends `FireAt : { Position: 42 }` and `GameScenario` sends `MoveTarget : {Position: 1}`. Due to duplication and re-ordering `FireAt` gets processed first followed by `MoveTarget` and finally `FireAt` duplicate. 
+Let's analyze one possible processing scenario that incudes `FireAt` and `MoveTarget` messages. Let's assume we begin with `TargetPosition` equal to `42`, the player sends `FireAt : { Position: 42 }` and `GameScenario` sends `MoveTarget : {Position: 1}`. Due to duplication and re-ordering `FireAt` gets processed first followed by `MoveTarget` and finally `FireAt` duplicate. 
 
 *Diagram*: show how the messages get processed and results
 
-This results in two messages being published by the `ShootingRange` - `Hit` and `Missed` both for the same `FireAt` message. Our logic is idempotent, our messages have well-defined business identity, yet **we ended up with two messages representing two contradictory facts about the same attempt**. 
+This results in two messages being published by the `ShootingRange` - `Hit` and `Missed` both for the same `FireAt` message. **We ended up with two messages representing two contradictory facts about the same attempt**. We didn't end up with an unexpected state e.g. with an attempt resulting in a miss when we expected a hit. It's far worse than that! We ended up in a state which indicates that two logically exclusive alternatives occurred. A state which is simply corrupted.
 
-We didn't end up with an unexpected state e.g. with an attempt resulting in a miss when we expected a hit. It's far worse than that! We ended up in a state which indicates that two logically exclusive alternatives occurred. A state which is simply corrupted.
+# Exactly-once
 
-## Exactly-once
+We know things went bad but what was the root cause? It all boils down to the fact that `FireAt` duplicate was processed using a different version of `ShootingRage` state than the first time. Initially, `TargetPosition` was `42` and changed to `1` before the duplicate arrived. That in turn resulted in "alternative-worlds" scenario where the attempt both missed and hit the target.
 
-Why didn't idempotency help us? It's because `FireAt` duplicate was processed using a different version of `ShootingRage` state than the first time. Idempotency describes what happens for duplicated, **successive** message processing. It says nothing about performing the same operation on different inputs - which is the case here. The value of `x` changed between the first and the second execution. Initially, `TargetPosition` was `42` and later changed to `1`. 
+Duplicates and re-ordering are reality we operate in and can't really change. What we can do though, is to ensure that once a message gets processed all duplicates result in consistent observable side-effects i.e. messages produced. In our example we need a guarantee that processing `FireAt` duplicate results in an exact copy of the first `Hit` event or there are no messages published.
 
-If we want to prevent "alternative-worlds" scenario (where the attempt both missed and hit the target), we need to ensure that once a logical message gets processed all duplicates result in consistent observable side-effects i.e. messages produced. In our example we need to guarantee that processing `FireAt` duplicate results in an exact copy of the first `Hit` event or that no message is published.
+More generally, we want an endpoint to produce observable side-effects **equivalent to some execution in which each logical message gets processed exactly-once**. Equivalent meaning that it's indistinguishable from the perspective of any other endpoint.
 
-More generally, we want an endpoint to produce observable side-effects identical to some execution in which each logical message gets processed **exactly-once**. 
+## State based
 
-### Capturing state history
+Any operation performed on the same input (state) results in the same output (messages), no matter how many times we will execute it. If for any duplicate we could get a version of the state as it was when the first processing happened than we could re-run the handling logic and be sure to get consistent output.
 
-One approach to implementing the required behavior would be to keep all historical versions of the state indexed by logical messages. With that in place, we could re-process any duplicate using the same state which would naturally produce the same side-effects. Of course, this requires additional storage. 
+The way to enable getting historical versions of the state depends on the mechanisms used to manage the state in the first place. In cases when the latest version of the state gets persisted this means copying the state on each modification and indexing by the message id. Though theoretically possible, an approach with obvious downsides. 
 
-What is more troublesome is the fact that we need to store all pieces of the state needed. In practice, this includes not only strictly business data but things like system clock value, file-system query results, remote service responses as well as pseudo-random data put in the outgoing messages like GUIDs and timestamp - just to name a few. Finally, the state needed depends on concrete business logic and would have to be identified separately for every operation.
+In systems were the state gets stored in form of an event log and is recreated from the log on each processing (e.g. event-sourcing) this becomes more feasable. In such settings, data stored in the log could be extended with input message identifiers enabling fairly easy historical state recreation. 
 
-### Capturing side-effects 
+Finally, what is also troublesome is the fact that we need to store all pieces of the state needed. In practice, this includes not only strictly business data but things like system clock value, file-system query results, remote service responses as well as pseudo-random data put in the outgoing messages like GUIDs and timestamp - just to name a few. We would need to make sure that any such invocations in the business logic are either forbidden or can be deterministically replayed - something that has already been proven to be possible (link-to-durable-functions).
+
+## Side-effects based
+
+TODO: remove the code samples - this should be in the next posts.
 
 An alternative approach is based on capturing the side-effects and not the state used to produce them. What gets captured are not the historical versions of the state but rather the messages that got produced when processing a message. For the `FireAt` message this could like this:
 
@@ -156,13 +159,14 @@ This looks quite a bit more involved than the previous version. The thing to not
 
 This raises interesting questions: Can this be done generically, independent of the business logic? Does it require any guarantees from the storage used by the endpoint? How much data do we need for the side effects? Those are all interesting topics that we will be covered in the follow-up posts.
 
-## Summary
+# Summary
 
 Idempotency is often claimed to be a remedy for troubles caused by at-least-once delivery guarantees. In this post, we showed that's not necessarily the case unless we talk about it's stronger version - one that is business identity-aware and produces exactly-once side-effects in face of message reordering. 
 
 It turns out that what we need is none trivial to implement but might be solvable in a generic manner at the level of infrastructure instead of business logic.
 
-(1) - this covers quite a wide range of systems. Including REST best microservice architectures.
+(1-0) - RabbitMQ, ASQ, Azure Service Bus, SQS
+(1-1) - this is just one scenario. In fact there is a whole slew of reasons for messages to be reordered. See (link-to-sqs-ordered-messaging) for more in-depth SQS-based case study
 (2) - Azure Durable Functions
 (3) - similarly to Value Objects and Entities in DDD
 (4) - both scenarios are indistinguishable from the perspective of any receiving endpoint
