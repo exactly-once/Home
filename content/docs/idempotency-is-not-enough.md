@@ -1,172 +1,144 @@
 # Introduction
-(Delivery guarantees)[TODO: link-to-the-previous-post] of modern messaging infrastructures make it non-trivial to build robust distributed systems. 
- 
- - We will talk about effects one should expect
- - We will show those can affect distributed system state on a concrete example 
- - We will sketch how one can cope with those in real-world systems
+Modern messaging infrastructures offer delivery guarantees that make it non-trivial to build distributed systems. Robust solutions require a good understanding of what can and can't happen in a system and how that affects business level behavior.
 
+This post walks through scenarios that look at the main challenges from the system consistency perspective and sketches possible solutions. 
+ 
 # A system 
 
-We will assume that systems in focus consists of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying its internal state and producing new messages. Finally, endpoints communicate using persistent messaging with at-least-once delivery guarantee. 
+We will assume that systems in focus consist of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying its internal state and producing output messages. All endpoints communicate using persistent messaging with at-least-once delivery guarantee. Finally, we will assume that no messages can be lost.
 
-This covers pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-prem and in the cloud (1-0). 
+This covers a pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-prem and in the cloud [^1]. 
 
-*Diagram*: endpoint with the state that processes a message multiple times
+{{< figure src="/docs/an_endpoint.jpg" title="An endpoint">}}
 
-At-least-once delivery means that (no surprise here) any in-flight message gets delivered - possibly multiple times. This is a direct consequence of protocols used for infrastructure-to-receiver communication. A message will be redeliver until it gets acknowledged by the receiver. Even if the receiver got the message and processed it successfully, the message will be send once more if the acknowledgement failed to reach the infrastructure. 
+With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-deliver until it gets acknowledged by the receiver. Duplicates are created also when messages are produced. A producer can't assume that a message has been delivered and stored by the infrastructure until that gets acknowledged. 
 
-Duplicates get created also when messages are sent. Any producer can't assume that a message has been delivered and stored by the infrastructure until it gets an acknowledgement. 
+Apart from being duplicated, in-flight messages can get re-ordered. There are many reasons for this to happen [^2] one of the most obvious being message re-delivery mechanism. If delivery fails, a message is available for reprocessing only after some back-off period. Any other in-flight message can be processed during that time causing the respective order of those messages to change.
 
-Message re-delivery logic executes individually for each message. For example, if there are two in-flight messages and processing fails for the first one the re-delivery will happen with some delay and the other message will be delivered in the meantime (1-1).
+Duplication and re-ordering happen both at the same which makes any duplication and re-ordering of in-flight messages possible. 
 
-There is nothing that prevents duplication and re-ordering from happening at the same. Those two effects combined make any duplication and re-ordering of in-flight messages possible. 
-
-*Diagram*: in-flight messages and possible processings: 1. dups, 2. dups + re-ordering, 3. both
-
-TODO: quick walk through the diagram
+{{< figure src="/docs/in_flight-to-processing_order.jpg" title="Sample duplication and re-ordering scenarios">}}
 
 # The system
 
-Let's look at a system that models a moving target shooting range to see practical consequences of message duplication and re-ordering. 
+Let's look at a system that models a moving target shooting range to see the practical consequences of this behavior. 
 
 We will start with a single `ShootingRange` endpoint which stores shooting target's location `{ int: TargetPosition }` and processes `FireAt : { int: Position }` messages. 
 
 Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `Missed` event to indicate the result:
 
-``` C#
+{{< highlight csharp >}}
 void Handle(FireAt message)
 {
-    if(this.TargetPosition == message.Position) 
-    {
-        Publish(new Hit());
-    }
-    else 
-    {
-        Publish(new Missed());
-    }
+ if(this.TargetPosition == message.Position) 
+ {
+ Publish(new Hit());
+ }
+ else 
+ {
+ Publish(new Missed());
+ }
 }
-```
+{{< /highlight >}}
 
 ## Duplicates
 
-Let's extend the system with second `LeaderBoard` endpoint that's responsible for storing the number of target hits that the player made. The endpoint processes `Hit` messages generated by the `ShootingRange`:
+Let's extend the system with a second `LeaderBoard` endpoint that's responsible for storing the number of target hits that the player made. The endpoint processes `Hit` messages generated by the `ShootingRange`:
 
-``` C# 
+{{< highlight csharp >}}
 void Handle(Hit message)
 {
-    this.NumberOfHits++;
+ this.NumberOfHits++;
 }
-```
+{{< /highlight >}}
 
-`Hit` message payload, makes it impossible for `LeaderBoard` to distinguish two logically different `FireAt` messages from two duplicates generated during delivery. When `LeaderBoard` receives `Hit` message it has no way to tell if there's been a new hit or if it's just duplicate of some other `Hit` message already processed.
+It's easy to notice that this will break when `Hit` messages get duplicated. When `LeaderBoard` receives a `Hit` message it has no way to tell if there's been a new hit or if it's just duplicate of some other `Hit` message already processed.
 
-The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values (3).
+The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values [^3].
 
-If we extend `FireAt` message with `AttemptId` property (unique for each attempt the player makes) and we can later use it as a identifier for the `Hit` event. With that in place `LeaderBoard` logic becomes:
+If we extend `FireAt` message with `AttemptId` property (unique for each attempt the player makes) we can later use it as an identifier for the `Hit` event. With that in place `LeaderBoard` logic becomes:
 
-``` C#
+{{< highlight csharp >}}
 void Handle(Hit message)
 {
-    if(this.Hits.Contains(message.AttemptId))
-    {
-        return;
-    }
-    this.Hits.Add(message.AttemptId);
-    
-    this.NumberOfHits++;
+ if(this.Hits.Contains(message.AttemptId))
+ {
+ return;
+ }
+ this.Hits.Add(message.AttemptId);
+ 
+ this.NumberOfHits++;
 }
-```
+{{< /highlight >}}
 
-In short, business level identifiers are a must to cope with duplicates.
+In short, business-level identifiers are a must to cope with duplicates.
 
 ## Re-ordering
 
-Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target by sending `MoveTarget` messages to `ShootingRange`. New message modifies `ShootingRange` internal state:
+Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target by sending `MoveTarget` messages to the `ShootingRange` endpoint. `ShootingRange` logic now becomes:
 
-``` C#
+{{< highlight csharp >}}
 void Handle(MoveTarget message)
 {
-    this.TargetPosition = message.Position;
+ this.TargetPosition = message.Position;
 }
 
 void Handle(FireAt message)
 {
-    if(this.TargetPosition == message.Position) 
-    {
-        Publish(new Hit { AttemptId = message.AttemptId });
-    }
-    else
-    {
-        Publish(new Missed { AttemptId = message.AttemptId });
-    } 
+ if(this.TargetPosition == message.Position) 
+ {
+ Publish(new Hit { AttemptId = message.AttemptId });
+ }
+ else
+ {
+ Publish(new Missed { AttemptId = message.AttemptId });
+ } 
 }
-```
+{{< /highlight >}}
 
-Let's analyze one possible processing scenario that incudes `FireAt` and `MoveTarget` messages. Let's assume we begin with `TargetPosition` equal to `42`, the player sends `FireAt : { Position: 42 }` and `GameScenario` sends `MoveTarget : {Position: 1}`. Due to duplication and re-ordering `FireAt` gets processed first followed by `MoveTarget` and finally `FireAt` duplicate. 
+Let's analyze one possible processing scenario that incudes `FireAt` and `MoveTarget` messages. We begin with `TargetPosition` equal to `42`, the player sends `FireAt : { Position: 42 }` and `GameScenario` sends `MoveTarget : {Position: 1}`. Due to duplication and re-ordering `FireAt` gets processed first followed by `MoveTarget` and finally `FireAt` duplicate. 
 
-*Diagram*: show how the messages get processed and results
+{{< figure src="/docs/seq-consistency-corruption.png" title="An 'alternative worlds' scenario">}}
 
-This results in two messages being published by the `ShootingRange` - `Hit` and `Missed` both for the same `FireAt` message. **We ended up with two messages representing two contradictory facts about the same attempt**. We didn't end up with an unexpected state e.g. with an attempt resulting in a miss when we expected a hit. It's far worse than that! We ended up in a state which indicates that two logically exclusive alternatives occurred. A state which is simply corrupted.
+This results with `ShootingRange` publishing two events - `Hit` and `Missed`, both for the same `FireAt` message. 
 
-# Exactly-once
+**We ended up with two messages representing two contradictory facts about the same attempt**. It's not the case of an unexpected end-state e.g. with an attempt resulting in a miss when we expected a hit. It's far worse than that! We ended up in a state which indicates that two logically exclusive alternatives occurred. A state which is simply corrupted.
 
-We know things went bad but what was the root cause? It all boils down to the fact that `FireAt` duplicate was processed using a different version of `ShootingRage` state than the first time. Initially, `TargetPosition` was `42` and changed to `1` before the duplicate arrived. That in turn resulted in "alternative-worlds" scenario where the attempt both missed and hit the target.
+# Consistency
 
-Duplicates and re-ordering are reality we operate in and can't really change. What we can do though, is to ensure that once a message gets processed all duplicates result in consistent observable side-effects i.e. messages produced. In our example we need a guarantee that processing `FireAt` duplicate results in an exact copy of the first `Hit` event or there are no messages published.
+We know things went bad but what was the root cause? It all boils down to the fact that `FireAt` duplicate was processed using a different version of `ShootingRage` state than the first time. Initially, `TargetPosition` was `42` and changed to `1` before the duplicate arrived. That, in turn, resulted in "alternative-worlds" scenario where the attempt both missed and hit the target.
+
+Duplicates and re-ordering are the reality we operate in and can't change. What we can do though, is to ensure that once a message gets processed all duplicates result in consistent observable side-effects i.e. messages produced. In our example, we need a guarantee that processing `FireAt` duplicate results either in no messages published or in an exact copy of the first `Hit` event. Producing duplicates is fine as those have to be handled either way. 
 
 More generally, we want an endpoint to produce observable side-effects **equivalent to some execution in which each logical message gets processed exactly-once**. Equivalent meaning that it's indistinguishable from the perspective of any other endpoint.
 
-## State based
+# Exactly-once
 
-Any operation performed on the same input (state) results in the same output (messages), no matter how many times we will execute it. If for any duplicate we could get a version of the state as it was when the first processing happened than we could re-run the handling logic and be sure to get consistent output.
+There are many possible implementations of exactly-once behavior. Every with its own set of constraints and trade-offs. As usual, which approach is the best fit depends on the context and concrete requirements. 
 
-The way to enable getting historical versions of the state depends on the mechanisms used to manage the state in the first place. In cases when the latest version of the state gets persisted this means copying the state on each modification and indexing by the message id. Though theoretically possible, an approach with obvious downsides. 
+## Business logic level
 
-In systems were the state gets stored in form of an event log and is recreated from the log on each processing (e.g. event-sourcing) this becomes more feasable. In such settings, data stored in the log could be extended with input message identifiers enabling fairly easy historical state recreation. 
+It's possible to make the business logic responsible for producing consistent behavior. In such a case, the business rules have to be extended or tweaked to make sure duplicates and re-ordering are properly handled. 
 
-Finally, what is also troublesome is the fact that we need to store all pieces of the state needed. In practice, this includes not only strictly business data but things like system clock value, file-system query results, remote service responses as well as pseudo-random data put in the outgoing messages like GUIDs and timestamp - just to name a few. We would need to make sure that any such invocations in the business logic are either forbidden or can be deterministically replayed - something that has already been proven to be possible (link-to-durable-functions).
+
+## State-based
+
+Any operation performed on the same input (state) results in the same output (messages), no matter how many times executed. If for any duplicate we could get a version of the state as it was when the first processing happened than we could re-run the handling logic and be sure to get consistent output.
 
 ## Side-effects based
 
-TODO: remove the code samples - this should be in the next posts.
+Alternatively, we could capture the side-effects instead of the state used to produce them. What gets captured in such an approach are not the historical versions of the state but rather messages that got produced when processing a given message. 
 
-An alternative approach is based on capturing the side-effects and not the state used to produce them. What gets captured are not the historical versions of the state but rather the messages that got produced when processing a message. For the `FireAt` message this could like this:
-
-``` C#
-void Handle(FireAt message)
-{
-    if(this.SideEffects.Contains(message.AttemptId) == false)
-    {
-        var sideEffects;
-    
-        if(this.ShootingTarget == message.Target) 
-        {
-            sideEffect = new Hit { AttemptId = message.AttemptId };
-        }
-        else
-        {
-            sideEffect = new Missed { AttemptId = message.AttemptId };
-        }
-    
-        SideEffects.Add(message.AttemptId, sideEffect);
-    }
-    
-    Publish(SideEffects[message.AttemptId]);
-}
-```
-
-This looks quite a bit more involved than the previous version. The thing to notice here, however, is the fact that the side-effects management logic is quite generic and independent of the business logic! 
-
-This raises interesting questions: Can this be done generically, independent of the business logic? Does it require any guarantees from the storage used by the endpoint? How much data do we need for the side effects? Those are all interesting topics that we will be covered in the follow-up posts.
+With that in place, whenever a message arrives we can query the side-effects store to see if that's a duplicate. If so, the business logic invocation can be skipped and the stored messages published right away. 
 
 # Summary
 
-Idempotency is often claimed to be a remedy for troubles caused by at-least-once delivery guarantees. In this post, we showed that's not necessarily the case unless we talk about it's stronger version - one that is business identity-aware and produces exactly-once side-effects in face of message reordering. 
+There are non-trivial challenges that designers need to overcome when building message-based systems. In this post, we've seen what kind of consistency problems may arise when message duplication and re-ordering are not handled with care. Finally, we sketched some of the possible ways to ensure consistent business behavior.
 
-It turns out that what we need is none trivial to implement but might be solvable in a generic manner at the level of infrastructure instead of business logic.
+That being said we only scratched the surface. There are many architectural and technical aspects that we did not consider tough: What can be done generically, independent of the business logic? Do we require any guarantees from the storage used by the endpoint? Exactly, how much extra data do we need to store? 
 
-(1-0) - RabbitMQ, ASQ, Azure Service Bus, SQS
-(1-1) - this is just one scenario. In fact there is a whole slew of reasons for messages to be reordered. See (link-to-sqs-ordered-messaging) for more in-depth SQS-based case study
-(2) - Azure Durable Functions
-(3) - similarly to Value Objects and Entities in DDD
-(4) - both scenarios are indistinguishable from the perspective of any receiving endpoint
+Those are all interesting topics that we will be covered in the follow-up posts.
+
+[^1]: RabbitMQ, ASQ, Azure Service Bus, SQS are just a few examples
+[^2]: Great description of ordered delivery challenges can be found in [Kevin's](https://sookocheff.com/post/messaging/dissecting-sqs-fifo-queues/) post. The post focuses on SQS but drives to conclusions applicable to other messaging solutions out there.
+[^3]: Similarly to Value Objects and Entities in Domain-Driven Design
