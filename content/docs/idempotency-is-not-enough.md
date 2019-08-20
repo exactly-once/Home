@@ -7,7 +7,7 @@ This post walks through scenarios that look at the main challenges from the syst
 
 We will assume that systems in focus consist of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying its internal state and producing output messages. All endpoints communicate using persistent messaging with at-least-once delivery guarantee. Finally, we will assume that no messages can be lost.
 
-This covers a pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-prem and in the cloud [^1]. 
+This covers a pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-premise and in the cloud [^1]. 
 
 {{< figure src="/docs/an_endpoint.jpg" title="An endpoint">}}
 
