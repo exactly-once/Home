@@ -15,7 +15,7 @@ With at-least-once delivery, any in-flight message gets delivered possibly multi
 
 Apart from being duplicated, in-flight messages can get re-ordered. There are many reasons for this to happen [^2] one of the most obvious being message re-delivery mechanism. If delivery fails, a message is available for reprocessing only after some back-off period. Any other in-flight message can be processed during that time causing the respective order of those messages to change.
 
-Duplication and re-ordering happen both at the same which makes any duplication and re-ordering of in-flight messages possible. 
+When combined, duplication and re-ordering can produce, at the receiver side, any sequence of messages. The only guarantee is that the resulting sequence contains at least one copy of each message sent. 
 
 {{< figure src="/docs/in_flight-to-processing_order.jpg" title="Sample duplication and re-ordering scenarios">}}
 
