@@ -11,7 +11,7 @@ This covers a pretty wide range of systems. Most notably service-based architect
 
 {{< figure src="/docs/an_endpoint.jpg" title="An endpoint">}}
 
-With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-deliver until it gets acknowledged by the receiver. Duplicates are created also when messages are produced. A producer can't assume that a message has been delivered and stored by the infrastructure until that gets acknowledged. 
+With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-delivered until it gets acknowledged by the receiver. Duplicates are also created on the producer side as the producer needs to retry sending messages until it gets an acknowledgement from the infrastructure. 
 
 Apart from being duplicated, in-flight messages can get re-ordered. There are many reasons for this to happen [^2] one of the most obvious being message re-delivery mechanism. If delivery fails, a message is available for reprocessing only after some back-off period. Any other in-flight message can be processed during that time causing the respective order of those messages to change.
 
