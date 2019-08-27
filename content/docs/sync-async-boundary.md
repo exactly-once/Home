@@ -2,11 +2,11 @@
 
 If my experience in the IT industry has taught me anything it would be that drawing boundaries is the most important part of the design process. Boundaries are essential for understanding and communicating the design. The sync-async is an example of a boundary that is useful when designing distributed systems.
 
-## Sync
+## Purely sync
 
 The most popular medium for building synchronous systems is HTTP. In the outermost layer, the user's action is transformed into an HTTP request by the code running in the browser and submitted to one of the backend components for processing. The response carries the result of the action for rendering on screen. Internally the component that does the processing can delegate part of the work to other components. It does so by sending its own requests and collecting responses. These other components can do the same. This can result in the request "tree" that can span dozens of components.
 
-## Async
+## Purely async
 
 In an asynchronous system components communicate by sending one-way messages to each other via message queues. The user's action is captured in a message that is put onto a queue. The message is picked up by another component. Processing a message can result in sending out more messages. Finally, the user interface component can receive a message that captures the result of the whole multi-step operation.
 
@@ -16,7 +16,9 @@ The synchronous approach allows a more straightforward programming model as the 
 
 The main problem with the synchronous approach is the temporal coupling it introduces. In order to process the request all the components involved need to be available at the same time. If processing the initial request results in more request (which in turn generate more requests) it can quickly get out of hand. The more parties need to be available at the same time, the higher the likelihood of any one of them failing and undermining the whole process.
 
-The asynchronous approach solves this problem by introducing queues and one-way messages. The sender or publisher puts the message onto a queue or topic and can immediately move on to processing subsequent work items. It does not waste time and resources actively waiting for a response. If the recipient is unavailable that's OK too. The queue will ensure the message is not lost and that it will be eventually delivered. 
+Another problem it that a purely synchronous model does not allow representing processes that are asynchronous by nature i.e. their execution is not tied to any particular user-initiated action. Such processes need to be implemented in a different way, e.g. as batch jobs.
+
+The asynchronous approach solves the temporal coupling problem by introducing queues and one-way messages. The sender or publisher puts the message onto a queue or topic and can immediately move on to processing subsequent work items. It does not waste time and resources actively waiting for a response. If the recipient is unavailable that's OK too. The queue will ensure the message is not lost and that it will be eventually delivered. 
 
 This huge advantage of asynchronous systems becomes a disadvantage when it comes to building user interface components. The time to process a message is generally longer and more involved than in a synchronous system. In order for the user to know the state of the system, it might be necessary to visualize pending operations related to messages that have been sent but not yet processed. This introduces the need to keep the state client-side. Depending on the complexity of the problem, it can lead to a fully-fledged multi-master replication as multiple clients can send messages that compete to modify the same set of data.
 
@@ -34,7 +36,7 @@ The user interacts with the *edge* of the system by working on a private set of 
 
 ## Exactly once
 
-As we stated before times, a successful exactly-once processing strategy depends on the ability to assign unique message ID in a deterministic manner. In the sync-async boundary approach the message ID is generated at the boundary based on the identity of the private data set. This guarantees that potential duplicates carry the same ID and therefore can be identified at their destination endpoints. 
+As we stated before (TODO: Link to the previous post), a successful exactly-once processing strategy depends on the ability to assign a unique message ID in a deterministic manner. In the sync-async boundary approach the message ID is generated at the boundary based on the identity of the private data set. This guarantees that potential duplicates carry the same ID and therefore can be identified at their destination endpoints.
 
 ## The story continues
 
