@@ -1,6 +1,6 @@
 # Message delivery patterns in asynchronous systems
 
-First of all we should ask ourselves a question: why both with distributed asynchronous systems? Wouldn't it be better to just build synchronous non-distributed ones? It certainly would be easier.
+First of all, we should ask ourselves a question: why bother with distributed asynchronous systems? Wouldn't it be better to just build synchronous non-distributed ones? It certainly would be easier.
 
 ### Why distributed
 
