@@ -4,9 +4,9 @@ First of all, we should ask ourselves a question: why bother with distributed as
 
 ### Why distributed
 
-A system is *distributed* if it consists of multiple components and these components are running inside different processes. The fact that these components are part of a single system means they need to communicate to realise functions of that systems. If there was no requirement for communication then we could call them separate non-distributed systems.
+A system is *distributed* if it consists of multiple components and these components are running inside different processes. The fact that these components are part of a single system means they need to communicate to realise functions of that systems. If there was no requirement for communication then we could call them separate non-distributed systems. In a distributed system components can fails independently which makes reasoning about the overall state of the system more difficult. A non-distributed system is either up or down. A distributed one can be partly up and its components need to cope with it.
 
-Communication across process boundaries is much more difficult than within a single process. A call to another service needs to be converted into a message that can be transmitted over the wire. On the other side a similar mechanism needs to unpack the message and convert it back into a function call. There are many things that can go wrong in the meantime, including but not limited to network issues and process downtime.
+Communication across process boundaries is much more challenging than within a single process. A call to another service needs to be converted into a message that can be transmitted over the wire. On the other side a similar mechanism needs to unpack the message and convert it back into a function call. There are many things that can go wrong in the meantime, including but not limited to network issues and process downtime.
 
 So why do we distribute components of our systems? The main reasons are following.
 
