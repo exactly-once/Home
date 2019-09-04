@@ -15,7 +15,7 @@ We will assume that systems in focus consist of endpoints, each owning a distinc
 
 This covers a pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-premise and in the cloud [^1]. 
 
-{{< figure src="/docs/an_endpoint.jpg" title="An endpoint">}}
+{{< figure src="/posts/an_endpoint.jpg" title="An endpoint">}}
 
 With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-delivered until it gets acknowledged by the receiver. Duplicates are also created on the producer side as the producer needs to retry sending messages until it gets an acknowledgement from the infrastructure. 
 
@@ -23,7 +23,7 @@ Apart from being duplicated, in-flight messages can get re-ordered. There are ma
 
 When combined, duplication and re-ordering can produce, at the receiver side, any sequence of messages. The only guarantee is that the resulting sequence contains at least one copy of each message sent. 
 
-{{< figure src="/docs/in_flight-to-processing_order.jpg" title="Sample duplication and re-ordering scenarios">}}
+{{< figure src="/posts/in_flight-to-processing_order.jpg" title="Sample duplication and re-ordering scenarios">}}
 
 ## The system
 
@@ -104,7 +104,7 @@ void Handle(FireAt message)
 
 Let's analyze one possible processing scenario that incudes `FireAt` and `MoveTarget` messages. We begin with `TargetPosition` equal to `42`, the player sends `FireAt : { Position: 42 }` and `GameScenario` sends `MoveTarget : {Position: 1}`. Due to duplication and re-ordering `FireAt` gets processed first followed by `MoveTarget` and finally `FireAt` duplicate. 
 
-{{< figure src="/docs/seq-consistency-corruption.png" title="An 'alternative worlds' scenario">}}
+{{< figure src="/posts/seq-consistency-corruption.png" title="An 'alternative worlds' scenario">}}
 
 This results with `ShootingRange` publishing two events - `Hit` and `Missed`, both for the same `FireAt` message. 
 
