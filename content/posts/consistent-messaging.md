@@ -5,23 +5,23 @@ date: 2019-09-04
 
 ---
 
-Modern messaging infrastructures offer delivery guarantees that make it non-trivial to build distributed systems. Robust solutions require a good understanding of what can and can't happen in a system and how that affects business level behavior.
+Modern messaging infrastructures offer delivery guarantees that make it non-trivial to build distributed systems. Robust solutions require a good understanding of what can and can't happen and how that affects business level behavior.
 
-This post walks through scenarios that look at the main challenges from the system consistency perspective and sketches possible solutions. 
+This post looks at the main challenges from the system consistency perspective and sketches possible solutions. 
  
 ## A system 
 
-We will assume that systems in focus consist of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying its internal state and producing output messages. All endpoints communicate using persistent messaging with at-least-once delivery guarantee. Finally, we will assume that no messages can be lost.
+We will assume that systems in focus consist of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying internal state and producing output messages. All endpoints communicate using persistent messaging with at-least-once delivery guarantee. Finally, we assume no messages can be lost.
 
 This covers a pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-premise and in the cloud [^1]. 
 
 {{< figure src="/posts/an_endpoint.jpg" title="An endpoint">}}
 
-With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-delivered until it gets acknowledged by the receiver. Duplicates are also created on the producer side as the producer needs to retry sending messages until it gets an acknowledgement from the infrastructure. 
+With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-delivered until acknowledged by the receiver. For the same reasons, duplicates get created by message producers.
 
 Apart from being duplicated, in-flight messages can get re-ordered. There are many reasons for this to happen [^2] one of the most obvious being message re-delivery mechanism. If delivery fails, a message is available for reprocessing only after some back-off period. Any other in-flight message can be processed during that time causing the respective order of those messages to change.
 
-When combined, duplication and re-ordering can produce, at the receiver side, any sequence of messages. The only guarantee is that the resulting sequence contains at least one copy of each message sent. 
+When combined, duplication and re-ordering can result, at the receiver side, in many different processing sequences. The only guarantee is that the resulting sequence contains at least one copy of each message sent. 
 
 {{< figure src="/posts/in_flight-to-processing_order.jpg" title="Sample duplication and re-ordering scenarios">}}
 
