@@ -1,4 +1,9 @@
-# Message delivery patterns in asynchronous systems
+---
+layout: post
+title: Message delivery patterns in asynchronous systems
+date: 2019-09-04
+
+---
 
 First of all, we should ask ourselves a question: why bother with distributed asynchronous systems? Wouldn't it be better to just build synchronous non-distributed ones? It certainly would be easier.
 

@@ -1,4 +1,9 @@
-# Sync-async boundary
+---
+layout: post
+title: Sync-async boundary
+date: 2019-09-04
+
+---
 
 If my experience in the IT industry has taught me anything it would be that drawing boundaries is the most important part of the design process. Boundaries are essential for understanding and communicating the design. The sync-async is an example of a boundary that is useful when designing distributed systems.
 
