@@ -2,6 +2,7 @@
 layout: post
 title: Message delivery patterns in asynchronous systems
 date: 2019-09-04
+draft: true
 
 ---
 

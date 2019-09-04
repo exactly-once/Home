@@ -36,14 +36,14 @@ Whenever `FireAt` message gets processed the endpoint produces either `Hit` or `
 {{< highlight csharp >}}
 void Handle(FireAt message)
 {
- if(this.TargetPosition == message.Position) 
- {
- Publish(new Hit());
- }
- else 
- {
- Publish(new Missed());
- }
+    if(this.TargetPosition == message.Position) 
+    {
+        Publish(new Hit());
+    }
+    else 
+    {
+        Publish(new Missed());
+    }
 }
 {{< /highlight >}}
 
@@ -54,7 +54,7 @@ Let's extend the system with a second `LeaderBoard` endpoint that's responsible 
 {{< highlight csharp >}}
 void Handle(Hit message)
 {
- this.NumberOfHits++;
+    this.NumberOfHits++;
 }
 {{< /highlight >}}
 
@@ -67,13 +67,13 @@ If we extend `FireAt` message with `AttemptId` property (unique for each attempt
 {{< highlight csharp >}}
 void Handle(Hit message)
 {
- if(this.Hits.Contains(message.AttemptId))
- {
- return;
- }
- this.Hits.Add(message.AttemptId);
- 
- this.NumberOfHits++;
+    if(this.Hits.Contains(message.AttemptId))
+    {
+        return;
+    }
+    this.Hits.Add(message.AttemptId);
+    
+    this.NumberOfHits++;
 }
 {{< /highlight >}}
 
@@ -86,19 +86,19 @@ Let's add another moving piece to our system - `GameScenario` endpoint that chan
 {{< highlight csharp >}}
 void Handle(MoveTarget message)
 {
- this.TargetPosition = message.Position;
+    this.TargetPosition = message.Position;
 }
 
 void Handle(FireAt message)
 {
- if(this.TargetPosition == message.Position) 
- {
- Publish(new Hit { AttemptId = message.AttemptId });
- }
- else
- {
- Publish(new Missed { AttemptId = message.AttemptId });
- } 
+    if(this.TargetPosition == message.Position) 
+    {
+        Publish(new Hit { AttemptId = message.AttemptId });
+    }
+    else
+    {
+        Publish(new Missed { AttemptId = message.AttemptId });
+    } 
 }
 {{< /highlight >}}
 
