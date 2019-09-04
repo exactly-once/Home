@@ -2,3 +2,6 @@ baseURL = "http://example.org/"
 languageCode = "en-us"
 title = "Exactly Once"
 theme = "hyde"
+[params]
+  layoutReverse = false
+  
