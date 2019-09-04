@@ -1,6 +1,7 @@
 baseURL = "https://exactly-once.github.io/"
 languageCode = "en-us"
 title = "Exactly Once"
+googleAnalytics = "UA-147074711-1"
 theme = "hyde"
 [params]
   layoutReverse = false
