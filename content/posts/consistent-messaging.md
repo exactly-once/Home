@@ -13,13 +13,13 @@ This post looks at the main challenges from the system consistency perspective a
 
 We will assume that systems in focus consist of endpoints, each owning a distinct piece of state. Every endpoint processes input messages, modifying internal state and producing output messages. All endpoints communicate using persistent messaging with at-least-once delivery guarantee. Finally, we assume no messages can be lost.
 
-This covers a pretty wide range of systems. Most notably service-based architectures build on top of modern messaging infrastructure - both on-premise and in the cloud [^1]. 
+This covers a pretty wide range of systems. Most notably service-based architectures build on top of the modern messaging infrastructure - both on-premise and in the cloud [^1]. 
 
 {{< figure src="/posts/an_endpoint.jpg" title="An endpoint">}}
 
 With at-least-once delivery, any in-flight message gets delivered possibly multiple times. This is a direct consequence of communication protocols used as any message will be re-delivered until acknowledged by the receiver. For the same reasons, duplicates get created by message producers.
 
-Apart from being duplicated, in-flight messages can get re-ordered. There are many reasons for this to happen [^2] one of the most obvious being message re-delivery mechanism. If delivery fails, a message is available for reprocessing only after some back-off period. Any other in-flight message can be processed during that time causing the respective order of those messages to change.
+Apart from being duplicated, in-flight messages can get re-ordered. There are many reasons for this to happen [^2] one of the most obvious being message re-delivery mechanism. If a delivery fails, a message is available for reprocessing only after some back-off period. Any other in-flight message can be processed during that time causing the respective order of those messages to change.
 
 When combined, duplication and re-ordering can result, at the receiver side, in many different processing sequences. The only guarantee is that the resulting sequence contains at least one copy of each message sent. 
 
@@ -62,7 +62,7 @@ It's easy to notice that this will break when `Hit` messages get duplicated. Whe
 
 The only way to cope with duplicates is by making sure we can test message equality at the business level. This can be achieved by modeling messages as immutable facts or intents with **unique identity** rather than values [^3].
 
-If we extend `FireAt` message with `AttemptId` property (unique for each attempt the player makes) we can later use it as an identifier for the `Hit` event. With that in place `LeaderBoard` logic becomes:
+If we extend `FireAt` message with `AttemptId` property (unique for each attempt the player makes) we can later use it as an identifier for the `Hit` event. With that in place, `LeaderBoard` logic becomes:
 
 {{< highlight csharp >}}
 void Handle(Hit message)
@@ -81,7 +81,7 @@ In short, business-level identifiers are a must to cope with duplicates.
 
 ### Re-ordering
 
-Let's add another moving piece to our system - `GameScenario` endpoint that changes current position of the moving target by sending `MoveTarget` messages to the `ShootingRange` endpoint. `ShootingRange` logic now becomes:
+Let's add another moving piece to our system - `GameScenario` endpoint that changes the current position of the moving target by sending `MoveTarget` messages to the `ShootingRange` endpoint. `ShootingRange` logic now becomes:
 
 {{< highlight csharp >}}
 void Handle(MoveTarget message)
