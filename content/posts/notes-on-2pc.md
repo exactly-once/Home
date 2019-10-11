@@ -5,24 +5,37 @@ date: 2019-09-04
 draft: true
 ---
 
-If there's one protocol every distributed system's engineer knows it's Two-Phase Commit (2PC). That said the understanding often doesn't match the popularity. In this post we will discuss selected misconceptions around 2PC. This is not yet another description of 2PC (TM) - if you need a refresher you might want to read one of the articles on 2PC. TODO:(link-to-2pc-description).
+If there's a distributed protocol every software engineer knows it's Two-Phase Commit. It's been around for several decades now [^1], sadly, there are quite a few misunderstandings around 2PC that we encountred in our practice. 
 
-### 2PC == MSDTC
-MSDTC (or XA if you come from the Java space) is 2PC coordinator implementation - one of many possible. It comes with concepts like `TransactionManagers` and `ResourceManagers`, implements security between parts of the system and provides tooling to figure out what's going on. Finally, it requires that `ResourceManagers` (aka. participants) support distributed transactions in order to take part in the protocol.
+This is not "yet another introduction to 2PC"(TM). If you need a refresher go through some the good [^2] descriptions of the protocol before continuing.
 
-You might find this distinction pedantic but as we will soon see it's important to make it clear if we talk about MSDTC or 2PC.
+### 2PC != MS DTC
+MS DTC (or XA if you come from the Java space) is an implementation of 2PC - one of many possible. It comes with concepts like `TransactionManagers` and `ResourceManagers`, implements security between participating processes, provides tooling to figure out what's going on in your system, etc.. 
 
-### 2PC applies to databases only
-2PC tells nothing about resources participating in the protocol. In MSDTC those could be databases, queueing systems, Web Services, files systems or any other resource that as long as they implement the protocol .
+### 2PC is not only about databases
+2PC tells nothing about resources participating in the protocol. Some of the most widely available implementations like MS DTC or XA support databases, queueing systems and Web Services. In fact, the concrete protocols are open and anyone is free to create new implementations for other types of resources. 
 
-### 2PC provides atomic visibility
-2PC ensures all participants will eventually commit i.e it is an atomic commit protocol. It **doesn't** however provide atomic visibility. When a transaction is being committed, it's possible to observe partial results.
+### 2PC does not provide atomic visibility
+2PC is an atomic commit protocol meaning all participants will **eventually commit** if all voted "YES". This however doesn't say anything about order in which the participants commit or the delays between commits.
 
-Imagine scenario, with 2PC spanning two databases. There is nothing that prevents a client from querying both databases and see one database before and the other after the commit. Finally, the order of commits is un-deterministic and can't be controlled.
+Let's look at an example to see what we mean by lack of atomic visibility. In our scenario we have two participants: a database and a messages queue. 
 
-[TODO: diagram]
+{{< figure src="/posts/2pc-atomic-visibility-scenario.jpg" title="2PC atomic visibility">}}
 
-If you come from the C# world and wonder why you haven't seen this happening in practice remember that 2PC != MSDTC. As any concrete implementation `System.Transactions.TransactionScope` used from managing MSDTC transactions comes with default configuration. Specifically, it uses `Serializable` as default isolation level. What it means for our scenario is that a client can't make a read from any database until the transaction commits (as the committing transactions are holding exclusive locks). Obviously, this doesn't hold for resources that don't support `Serializable` isolation levels or when you change the default configuration.
+The diagram shows the part of the 2PC protocol after both participants voted "YES" and the cooridantor is commiting. What's most interesting is the ouside observer i.e. the client. It makes a read requests to both participants. In case of the message queue, the read request arrives after the commit from the coordinator which means that this read will return any messages send to the queue. 
+
+In case of the database the read request arrives before the commit. What will be the result here? First, 2PC says nothing about read behavior, it only requires that the database guarantees successful commit. The result depends on is the deployment configuration and there are at least two possible behaviors. The the read operation can:
+    
+* Hang until the local transaction is committed - this will happen when local transaction operates in `Serializable` isolation level. This is default with MS DTC and MS SqlServer unless explictly changed,
+* Return the last commited value (not the one written by the local transaction) - this will happen when local transaction operates with `Snapshot` isolation.
+
+Again. The behavior is not dictated by 2PC it depends on configuration of concrete implementation and configuration.
+
+### 2PC does not tolerate failures
+
+TODO: what happens if participant and or cooridnator get down? This is actually question about failure tolerance and what kind of failures can be tolerated by 2PC
+
+Participants can't make progress *on-their-own* when waiting for `Coordinators` decision. That being said that *window* of vulnerability is smaller than some might think (only during voting not during performing transactional work on each resource).
 
 ### 2PC is not fault tolerant
 Resources participating in 2PC can't make progress *on-their-own* if they voted `Yes` and are waiting for `Coordinators` decision. In other words it is possible for a participant to get stuck until hearing back from the coordinator. Looking at a sample code it means that provided `scope.Compete` has been called and we are leaving the `using` scope (this is when MSDTC commit is triggered) than the transaction can get stuck if the coordinator fails midway transaction commit.
@@ -42,3 +55,6 @@ No! E.g. FaunaDB.
 
 ## Summary
 I hope this post puts some light on 2PC and it's characteristics necessary to make an informed  judgement on it's suitability for given context.  
+
+[^1]: link to System R publication
+[^2]: link to some decent 2PC tutorial
