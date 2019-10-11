@@ -1,8 +1,8 @@
 ---
 layout: post
 title: Consistent state
-date: 2019-09-04
-draft: true
+date: 2019-10-11
+draft: false
 ---
 
 In the previous [post](/posts/consistent-messaging) we talked about exactly-once processing looking at the endpoint from the outside. Here we will re-focus on an individual endpoint and see what exactly-once means for an endpoint's state.
