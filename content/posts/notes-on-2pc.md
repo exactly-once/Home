@@ -31,16 +31,14 @@ In case of the database the read request arrives before the commit. What will be
 
 Again. The behavior is not dictated by 2PC it depends on configuration of concrete implementation and configuration.
 
-### 2PC does not tolerate failures
+### 2PC is not fault tolerant enough
+Any non-trivial protocol defines failure conditions that it's able to tolerate - 2PC is no exception. What is specific to 2PC is that some types of failures can make participants get "stuck". Whenever a participant votes "YES" it's unalbe to make any progress until hearing back from coordinator. 
 
-TODO: what happens if participant and or cooridnator get down? This is actually question about failure tolerance and what kind of failures can be tolerated by 2PC
+What are concrete reasons for getting stuck? First, the coordinator may fail. Secondly, the coordinator might be partitioned from the participant[^3]. The likelyhood of stucking is conditioned by coordinators availability and the probability of network partition. Making coordinator and network more available we can make 2PC more fault tolerant.
 
-Participants can't make progress *on-their-own* when waiting for `Coordinators` decision. That being said that *window* of vulnerability is smaller than some might think (only during voting not during performing transactional work on each resource).
+{{< figure src="/posts/2pc-no-progress.jpg" title="Participant in the 'stuck' state">}}
 
-### 2PC is not fault tolerant
-Resources participating in 2PC can't make progress *on-their-own* if they voted `Yes` and are waiting for `Coordinators` decision. In other words it is possible for a participant to get stuck until hearing back from the coordinator. Looking at a sample code it means that provided `scope.Compete` has been called and we are leaving the `using` scope (this is when MSDTC commit is triggered) than the transaction can get stuck if the coordinator fails midway transaction commit.
-
-That said we are talking here about MSDTC which only one possible 2PC implementations. There is nothing that prevents us from running coordinator over some fault tolerant protocol. If we combine that with highly available network  making network partitioning highly unlikely we end-up with pretty robust solution. In fact this exactly how Google Spanner is internally using 2PC (TODO: link).
+This touches one more time on "2PC is not MS DTC". In MS DTC, the coordinator is a single process which is purely implementation decission. There is nothing in 2PC that could prevents us from implementing it as quorum of process[^4]. Secondly, if we run in a local network or inside a single VM (the coordinator and all participants) what is the probability of network partitioning? As always, context is the king.   
 
 ### 2PC's biggest problem is commit latency
 It's not the latency but 
@@ -58,3 +56,5 @@ I hope this post puts some light on 2PC and it's characteristics necessary to ma
 
 [^1]: link to System R publication
 [^2]: link to some decent 2PC tutorial
+[^3]: note on cooperative commit option
+[^4]: this is exactly what Google Spanner does [TODO-link]
