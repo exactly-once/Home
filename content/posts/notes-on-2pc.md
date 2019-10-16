@@ -31,7 +31,7 @@ In case of the database the read request arrives before the commit. What will be
 
 Again. The behavior is not dictated by 2PC it depends on configuration of concrete implementation and configuration.
 
-### 2PC is not fault tolerant enough
+### Fault tolerance is managable
 Any non-trivial protocol defines failure conditions that it's able to tolerate - 2PC is no exception. What is specific to 2PC is that some types of failures can make participants get "stuck". Whenever a participant votes "YES" it's unalbe to make any progress until hearing back from coordinator. 
 
 What are concrete reasons for getting stuck? First, the coordinator may fail. Secondly, the coordinator might be partitioned from the participant[^3]. The likelyhood of stucking is conditioned by coordinators availability and the probability of network partition. Making coordinator and network more available we can make 2PC more fault tolerant.
@@ -40,21 +40,33 @@ What are concrete reasons for getting stuck? First, the coordinator may fail. Se
 
 This touches one more time on "2PC is not MS DTC". In MS DTC, the coordinator is a single process which is purely implementation decission. There is nothing in 2PC that could prevents us from implementing it as quorum of process[^4]. Secondly, if we run in a local network or inside a single VM (the coordinator and all participants) what is the probability of network partitioning? As always, context is the king.   
 
-### 2PC's biggest problem is commit latency
-It's not the latency but 
+### Commit latency is not the biggest problem
+Commiting in 2PC requires 2 round trips between coordinator and participants, and there are 4*n messages generated, where n is the number of participants. This is sometimes viewed as the root cause of many practical problems with the protocol. It defenatelly isn't ideal but it only surfaces other, bigger problem.
 
-### 2PC is unsuitable for Cloud
-We already know that it's used in the cloud (Spanner) and can be used by the users for some time already (VMs etc.). What it does, is that it assumes full trust between processes which is not the case in cloud environment.
+The problem is potential contention at participant level casued by locking. Especially in case of reational databases hodling locks means that other transactions dealing with a given piece of state need to wait for the transaction to commit to make any progress.
 
-Who are participants? If we expose 2pc to the clients they can do DOS.
+This problem exists also without 2PC but the protocol makes is pretty much always worst. In 2PC, as the lock holding time is mostly driven by the parital transation that takes the longes, and the commit delay.
 
-### 2PC is the only commit protocol out-there
-No! E.g. FaunaDB.
+### 2PC fits Cloud quite well
+We already know that it's used in by the cloud vendors in their services[^4] and can be used by the users when running at the IaaS level[^5]. That, said none of the cloud vendors support MS DTC and/or XA at the level of cloud services. 
+
+Often, it's claimed that the main reason are performance problems. Although, those can be significant it can be argued that secuirty aspects are even more important. 2PC assumes high degree of trust between participants an coordiantor. We could easly imagine an evil coordinator that exhausts participants resources by purposfully letting transactions hang in the `stuck state`. 
+
+From the cloud vendor perspective that could have quite a damaging consequences. According to the protocol participant is not able to make any progress after voting "YES". So in case of malacious coordinator they would have to break the protocol or let their resources be blocked. Enabling cloud services to act as MS DTC participants is effectivelly opening doors for DoS attack[^6]. 
+
+### 2PC is not the only commit protocol
+2PC is just one possible solution to atomic committ protocol. It has it's own set of assumptions and dedicated scenarios were it works well. 
+
+That said it's not the only commit protocol out there. With different set of assumptions e.g. about the participating resources it's possible to minimize the lock holding time[^7] or remove the need for coordinator[^8].   
 
 ## Summary
-I hope this post puts some light on 2PC and it's characteristics necessary to make an informed  judgement on it's suitability for given context.  
+Hopefully, this post puts a bit more some light on 2PC. As any other protocol out there it's neither good or bad - context is the king!  
 
 [^1]: link to System R publication
 [^2]: link to some decent 2PC tutorial
 [^3]: note on cooperative commit option
 [^4]: this is exactly what Google Spanner does [TODO-link]
+[^5]: Azure connected services
+[^6]: "(...) Ultimately, MSDTC is a single-node/cluster and local-network technology, which also manifests in its security model that is fairly difficult to adapt to a multitenant cloud system. (...)" by Clemens Vasters in [Distributed Transactions and Virtualization](http://vasters.com/archive/Distributed-Transactions-And-Virtualization.html)
+[^7]: transactions in [FaunaDB](https://fauna.com/blog/consistency-without-clocks-faunadb-transaction-protocol) being a good example  
+[^8]: Outbox pattern is commit protocol implementaiton that assumes writing to the message queue is idempotent and will always succeed
