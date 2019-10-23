@@ -50,7 +50,7 @@ This problem exists also without 2PC but the protocol makes is pretty much alway
 ### 2PC fits Cloud quite well
 We already know that it's used in by the cloud vendors in their services[^4] and can be used by the users when running at the IaaS level[^5]. That said, none of the cloud vendors support MS DTC and/or XA at the level of cloud services. 
 
-Often, it's claimed that the main reason are performance problems. Although, those can be significant it can be argued that secuirty aspects are even more important. 2PC assumes high degree of trust between participants an coordiantor. We could easly imagine an evil coordinator that exhausts participants resources by purposfully letting transactions hang in the `stuck state`. 
+Often, it's claimed that the main reason are performance problems. Although, those can be significant it can be argued that security aspects are even more important. 2PC assumes high degree of trust between the participants and the coordinator. We could easily imagine an evil coordinator that exhausts participants resources by purposefully letting transactions hang in the `stuck state`. 
 
 From the cloud vendor perspective that could have quite a damaging consequences. According to the protocol participant is not able to make any progress after voting "YES". So in case of malacious coordinator they would have to break the protocol or let their resources be blocked. Enabling cloud services to act as MS DTC participants is effectivelly opening doors for DoS attack[^6]. 
 
