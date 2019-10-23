@@ -43,7 +43,7 @@ This touches one more time on "2PC is not MS DTC". In MS DTC, the coordinator is
 ### Commit latency is not the biggest problem
 Commiting in 2PC requires 2 round trips between coordinator and participants, and there are 4*n messages generated, where n is the number of participants. This is sometimes viewed as the root cause of many practical problems with the protocol. It defenatelly isn't ideal but it only surfaces other, bigger problem.
 
-The problem is potential contention at participant level casued by locking. Especially in case of reational databases hodling locks means that other transactions dealing with a given piece of state need to wait for the transaction to commit to make any progress.
+The problem is potential contention at participant level caused by locking. Especially in case of relational databases holding locks means that other transactions dealing with a given piece of state need to wait for the transaction to commit to make any progress.
 
 This problem exists also without 2PC but the protocol makes is pretty much always worst. In 2PC, as the lock holding time is mostly driven by the parital transation that takes the longes, and the commit delay.
 
