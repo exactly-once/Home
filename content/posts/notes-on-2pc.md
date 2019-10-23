@@ -38,7 +38,7 @@ What are concrete reasons for getting stuck? First, the coordinator may fail. Se
 
 {{< figure src="/posts/2pc-no-progress.jpg" title="Participant in the 'stuck' state">}}
 
-This touches one more time on "2PC is not MS DTC". In MS DTC, the coordinator is a single process which is purely implementation decission. There is nothing in 2PC that could prevents us from implementing it as quorum of process[^4]. Secondly, if we run in a local network or inside a single VM (the coordinator and all participants) what is the probability of network partitioning? As always, context is the king.   
+This touches one more time on "2PC is not MS DTC". In MS DTC, the coordinator is a single process which is purely implementation decission. There is nothing in 2PC that prevents us from implementing it as quorum of process[^4]. Secondly, if we run in a local network or inside a single VM (the coordinator and all participants) what is the probability of network partitioning? As always, context is king.   
 
 ### Commit latency is not the biggest problem
 Commiting in 2PC requires 2 round trips between coordinator and participants, and there are 4*n messages generated, where n is the number of participants. This is sometimes viewed as the root cause of many practical problems with the protocol. It defenatelly isn't ideal but it only surfaces other, bigger problem.
