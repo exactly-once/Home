@@ -5,7 +5,7 @@ date: 2019-09-04
 draft: true
 ---
 
-If there's a distributed protocol every software engineer knows it's Two-Phase Commit aka. 2PC. Although, in use for several decades[^1], it's application has been in decline for some time now - mainly due lack of support in the cloud. For quite a long time it's been de-facto standard for building enterprise distribured systems. With the cloud becoming default deployment option desingers need to build reliable systems without 2PC. 
+If there's a distributed protocol every software engineer knows it's Two-Phase Commit aka. 2PC. Although, in use for several decades[^1], it's application has been in decline for some time now - mainly due lack of support in the cloud. For quite a long time it has been a de-facto standard for building enterprise distributed systems. With the cloud becoming the default deployment option designers need to build reliable systems without 2PC. 
 
 Answering how 2PC can be replaced requires understanding of what was it, that the protocol provided in he first place. In spite of it's popularity, there are quite some misunderstandings around 2PC. This posts aims to clarify at least some of these.      
 
