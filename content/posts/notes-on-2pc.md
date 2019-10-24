@@ -7,14 +7,14 @@ draft: true
 
 If there's a distributed protocol every software engineer knows it's Two-Phase Commit also know as 2PC. Although, in use for several decades[^1], it's been in steady decline mainly due to lack of support in cloud environments. 
 
-For quite a long time it has been a de-facto standard for building enterprise distributed systems. That said, with the cloud becoming the default deployment model designers need to learn how to build reliable systems without. 
+For quite a long time it has been a de-facto standard for building enterprise distributed systems. That said, with the cloud becoming the default deployment model, designers need to learn how to build reliable systems without. 
 
 Answering the question of how 2PC can be replaced requires an understanding of what it was, that the protocol provided in the first place. In spite of its popularity, there are plenty of misconceptions around 2PC. This post aims to clarify at least some of these.      
 
 NOTE: This is not "yet another introduction to 2PC"(TM). If you need a refresher read one of many descriptions out there before continuing.
 
 ### 2PC does not provide "transactions"
-2PC is an atomic commit protocol meaning all participants will **eventually commit** if all voted "YES" or leave the system unchanged otherwise. When a commit operation triggered by the user finishes, either all local modifications have been applied or none of them. The commit can take arbitrarily long to complete. In some failure scenarios, it will hang forever.
+2PC is an atomic commit protocol meaning all participants will **eventually commit** if all voted "YES" or leave the system unchanged otherwise. When a commit operation triggered by the user finishes, either all local modifications have been applied or none of them has. The commit can take arbitrarily long to complete. In some failure scenarios, it will hang forever.
 
 Let's look at an example to see what we mean by "no transactions". In our scenario, we have two participants: a database and a messages queue. 
 
@@ -81,6 +81,6 @@ Hopefully, this post puts a bit more light on 2PC and what is it that we get fro
 [^5]: Azure connected services
 [^6]: "(...) Ultimately, MSDTC is a single-node/cluster and local-network technology, which also manifests in its security model that is fairly difficult to adapt to a multitenant cloud system. (...)" by Clemens Vasters in [Distributed Transactions and Virtualization](http://vasters.com/archive/Distributed-Transactions-And-Virtualization.html)
 [^7]: transactions in [FaunaDB](https://fauna.com/blog/consistency-without-clocks-faunadb-transaction-protocol) being a good example  
-[^8]: Outbox pattern is commit protocol implementaiton that assumes writing to the message queue is idempotent and will always succeed
+[^8]: [Outbox pattern](https://docs.particular.net/nservicebus/outbox/) is commit protocol implementation that assumes writing to the message queue is idempotent and will always succeed
 [^9]: windows clustering
 [^10]: an implementation of 2PC built into Windows
