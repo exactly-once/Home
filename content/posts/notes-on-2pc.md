@@ -54,7 +54,7 @@ We know that 2PC is used by the cloud vendors inside their services[^4] and can 
 
 Often times, availability and performance are claimed to be the reasons for that. Although these two are definitely the strongest points of 2PC, it can be argued that security (or its lack) is even more important. 2PC assumes high degree of trust between the participants and the coordinator. One could imagine an evil user that uses a specially crafted coordinator to exhausts participants resources by purposefully letting transactions hang in the `stuck state`.
 
-From the cloud vendor perspective that could have quite a damaging consequences. According to the protocol participant is not able to make any progress after voting "YES". So in case of malacious coordinator they would have to break the protocol or let their resources be blocked. Enabling cloud services to act as MSDTC participants is effectivelly opening doors for DoS attack[^6]. 
+From the cloud vendor perspective that could have quite a damaging consequences. According to the protocol participant is not able to make any progress after voting "YES". So in case of malicious coordinator they would have to break the protocol or allow their resources be blocked. Enabling cloud services to act as 2PC participants is effectively opening doors for a Denial of Service (DoS) attack[^6]. 
 
 Even if the cloud vendors provided their own coordinators as the only valid option, a malacious participant could do still cause a lot of harm. 
 
