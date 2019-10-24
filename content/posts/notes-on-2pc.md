@@ -1,8 +1,8 @@
 ---
 layout: post
 title: Notes on 2PC
-date: 2019-09-04
-draft: true
+date: 2019-10-24
+draft: false
 ---
 
 If there's a distributed protocol every software engineer knows it's Two-Phase Commit also know as 2PC. Although, in use for several decades[^1], it's been in steady decline mainly due to lack of support in cloud environments. 
