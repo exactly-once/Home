@@ -5,4 +5,5 @@ googleAnalytics = "UA-147074711-1"
 theme = "hyde"
 [params]
   layoutReverse = false
+  author = 'Tomek Masternak, Szymon Pobiega'
   description = 'On distributed systems by <a href="http://twitter.com/SzymonPobiega">@SzymonPobiega</a> and <a href="http://twitter.com/Masternak">@Masternak</a>'
