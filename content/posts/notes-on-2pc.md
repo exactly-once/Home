@@ -2,6 +2,7 @@
 layout: post
 title: Notes on 2PC
 date: 2019-10-24
+author: Tomek Masternak, Szymon Pobiega
 draft: false
 ---
 
