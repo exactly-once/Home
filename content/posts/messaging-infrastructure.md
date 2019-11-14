@@ -4,13 +4,15 @@ So far we've seen message de-duplication is not a simple topic and that *idempot
 
 ## Building blocks
 
-In the model of a distributed system we use, all business processes are implemented by combining one simple building block. That building block consists of five operations
+In the model of a distributed system that was introduced in the previous posts, message processing can be broken down to a small set of simple building blocks. The set consists of five types of operations
 - receive message
 - execute business logic
 - persist state change
 - send outgoing messages
 - consume the receive message 
-Note that in the previous posts we've shown how the these blocks have slightly different shape at the system boundary. The behavior of the system depends greatly on how these five operations comprising a block are combined into atomic transactions. 
+It is the composition i.e. order and transaction boundaries, of these operations that define the properties of our system. 
+
+Note that in the previous [post](/posts/sync-async-boundary) we've shown how these blocks have a slightly different shape at the system boundary. 
 
 ## Retries
 
@@ -24,11 +26,13 @@ Let's see how the five operations of our basic building block can be combined to
 
 ## No transactions
 
-The simplest approach is to not use any transactions at all. In this case we have three visible and distinguishable failure modes:
+The trivial approach is to not use any transactions at all. In this case, we have three distinct failure modes:
 - business logic has executed
 - state change has been persisted
 - outgoing messages have been sent
-Note that if we are sending out more than one message, the number of possible failure modes goes up because sending each message constitutes one transaction. This business mode requires the least amount of technology but is the hardest one to work with as the business logic needs to take into account all these failure modes when processing a message.
+If we are sending out more than one message, the number of possible failure scenarios increases because sending each message constitutes a separate operation. 
+
+This approach requires the least support from a technology perspective but is the hardest one to work with as the business logic needs to take into account all these failure modes and support deterministic behavior during retires.
 
 ## Atomic store-send-and-consume
 
