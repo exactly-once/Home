@@ -6,9 +6,9 @@ The messaging infrastructure is all the components that are required to exchange
 
 Throughout this article we are assuming that the message queue we are using is durable and it re-delivers messages for processing in case previous processing attempts have failed. In this model receiving of a message is a *read* operation that has no side effects. In order to remove a message from the queue it needs to be consumed. The *consume* operation permanently removes the message from the queue.
 
-## Building blocks
+## Basic operations
 
-In the model of a distributed system that was introduced in the previous posts, message processing can be broken down to a small set of simple building blocks. The set consists of five types of operations
+In the model of a distributed system that was introduced in the previous posts, message processing can be broken down into a list of basic operations. Here's the list in order that ensures guaranteed delivery mentioned above.
 - receive message
 - execute business logic
 - persist state change
@@ -21,9 +21,11 @@ Note that in [one of the previous posts post](/posts/sync-async-boundary) we've 
 
 If two or more operations are combined into a transactions, it is guaranteed that either all operations complete successfully or neither does. This is the atomicity property of a transaction. Atomicity is not enough, though. We also need to make sure that the results of the transaction are not lost. In other words, we need these transactions to also be durable. That means that an operation can be transactional if it interacts with a medium that can durably record state. 
 
-Out of the five building blocks above, one is non-transactional by nature -- execution of the business logic. That might come as a surprise for you at first. Don't we talk about transactional execution of business logic all the time? Of course we do but this is a kind of mental shortcut. In reality the effect of executing business logic is just a bunch of bits flipped in the volatile memory of the computer. Unless that machine has a persistent RAM (which we assume is not the case), execution of business logic cannot take part in a durable atomic transaction.
+Out of the five operations above, one is non-transactional by nature -- execution of the business logic. That might come as a surprise for you at first. Don't we talk about transactional execution of business logic all the time? Of course we do but this is a kind of mental shortcut. In reality the effect of executing business logic is just a bunch of bits flipped in the volatile memory of the computer. Unless that machine has a persistent RAM (which we assume is not the case), execution of business logic cannot take part in a durable atomic transaction.
 
-The way the blocks are grouped in transactions defines the behavior of the system.
+## Consistent messaging
+
+As we mentioned in [our first post](https://exactly-once.github.io/posts/consistent-messaging/), the message processing needs to follow a specific pattern in order for the distributed system to be consistent. We called that pattern *consistent messaging*. Let us now examine possible ways of arranging the basic operations of message processing into transactions such that fit the consistent messaging pattern.
 
 ## No transactions
 
@@ -32,9 +34,9 @@ The trivial approach is to not use any transactions at all. Each operation is ex
 - state change has been persisted
 - outgoing messages have been sent
 
-If we are sending out more than one message, the number of possible failure scenarios increases because sending each message constitutes a separate operation. 
+If we are sending out more than one message, the number of possible failure scenarios increases because sending each message constitutes a separate operation.
 
-This approach requires the least support from the messaging infrastructure but is the hardest one to work with as the business logic needs to take into account all these failure modes and support deterministic behavior during retires.
+This approach requires the least support from the messaging infrastructure but is the hardest one to work with as the business logic needs to take into account all these failure modes and support deterministic behavior during retires. As we proved in [consistent messaging](https://exactly-once.github.io/posts/consistent-messaging/) this is all but a trivial task even for the simplest business logic.
 
 ## All-or-nothing
 
@@ -46,7 +48,7 @@ The fact that exactly-once message delivery is impossible can be demonstrated us
 
 We don't have such devices so we need to accept that even in the strongest of message processing modes, the all-or-nothing mode, the business logic can be executed multiple times. If a message processing transaction is not completed and the message is delivered again, the business logic is executed as if it was the first attempt. If that business logic produces any side effects, these effects are produced for the second time. An example is calling a web service to authorize a credit card transaction. Each time a message processing is retried, a new authorization is created until the customer's balance reaches zero. We will deal with cases like this later in the series when we'll discuss various resources a system can interact with.
 
-The all-or-nothing is a very powerful concept as it allows writing very simple business logic code. Provided that this code does not produce any side effects, the behavior of the system is exactly as if *exactly-once message delivery* was a thing. Sounds compelling, doesn't it?So how can I use this mode? The all-or-nothing mode can be implemented in two ways. 
+The all-or-nothing is a very powerful concept as it allows writing very simple business logic code. Provided that this code does not produce any side effects, the behavior of the system is exactly as if *exactly-once message delivery* was a real thing. Sounds compelling, doesn't it? So how can I use this mode? The all-or-nothing mode can be implemented in two ways. 
 
 The first approach is to use distributed transaction technology that ensures that individual transactions against the data store and the message queue are made atomic and durable. The problem is, such technology is no longer widely accessible. Few message queue products support distributed transactions and none of them is designed to work well in the cloud. You can learn more about distributed transactions and the Two-Phase Commit protocol from [one of our previous posts](https://exactly-once.github.io/posts/notes-on-2pc/).
 
