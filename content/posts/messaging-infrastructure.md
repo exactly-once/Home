@@ -76,7 +76,7 @@ As a consequence, there is one partial failure mode possible when the state has 
 
 You might now ask the question how can we implement a transaction that spans both persisting state and sending out messages. Wouldn't it require the same sort of infrastructure as the all-or-nothing mode? As it turns out, it does not.
 
-If the case of all-or-nothing we are dealing with a problem that is equivalent to the *consensus problem* [^2]. We need two parties (the database and the queue) to agree on committing the outcome of their respective jobs. 
+All-or-nothing is equivalent to atomic commit which in general case is harder than *consensus problem* [^2]. We need two parties (the database and the queue) to agree on committing the outcome of their respective jobs. 
 
 On the other hand the store-and-send is a much simpler problem of coordinating two operations in such a way that if one succeeds, the other will eventually succeed too. We'll leave the detailed discussion of that problem to the next post. Here it should be enough to state that storing outgoing messages in the database used for business is one possible solution.
 
