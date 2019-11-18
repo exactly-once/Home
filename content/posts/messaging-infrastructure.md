@@ -13,7 +13,9 @@ In the model of a distributed system that was introduced in the previous posts, 
 - execute business logic
 - persist state change
 - send outgoing messages
-- consume the receive message 
+- consume the receive message
+
+{{< figure src="/posts/messaging-infrastrcture-operations.png" title="Basic operations">}}
 
 Note that in [one of the previous posts post](/posts/sync-async-boundary) we've shown how these blocks have a slightly different shape at the system boundary. 
 
@@ -29,7 +31,11 @@ As we mentioned in [our first post](https://exactly-once.github.io/posts/consist
 
 ## No transactions
 
-The trivial approach is to not use any transactions at all. Each operation is executed in its own context. In this case, we have three distinct failure modes:
+The trivial approach is to not use any transactions at all. Each operation is executed in its own context. 
+
+{{< figure src="/posts/messaging-infrastrcture-no-transactions.png" title="No transactions">}}
+
+In this case, we have three distinct failure modes:
 - business logic has executed
 - state change has been persisted
 - outgoing messages have been sent
@@ -41,6 +47,8 @@ This approach requires the least support from the messaging infrastructure but i
 ## All-or-nothing
 
 At the opposite end of the spectrum we have the all-or-nothing approach, sometimes referred to as *fully-consistent*. In this mode a single atomic and durable transaction spans all the operations excluding execution of the business logic.
+
+{{< figure src="/posts/messaging-infrastrcture-all-or-nothing.png" title="All or nothing">}}
 
 The all-or-nothing mode is guaranteed to not generate duplicate messages in the course of the communication as the incoming message is consumed only if the outgoing messages are sent out, and vice versa. So, given there is no duplicate messages, does it mean this is equivalent to *exactly-once message delivery*? Of course the answer is no. 
 
@@ -61,6 +69,9 @@ In summary, the all-or-nothing is a great model from the simplicity of business 
 A commonly used middle ground between the two approaches described earlier is a mode called *atomic store-and-send* or *atomic store-and-publish*. In this mode there are two transactions
 - persist state and send out messages
 - consume incoming message
+
+{{< figure src="/posts/messaging-infrastrcture-atomic-store-and-send.png" title="Atomic store and send">}}
+
 As a consequence, there is one partial failure mode possible when the state has been persisted and messages sent out but the incoming message has not been consumed. To handle that case the code of the service needs to be able to check if a given message has already been processed. 
 
 You might now ask the question how can we implement a transaction that spans both persisting state and sending out messages. Wouldn't it require the same sort of infrastructure as the all-or-nothing mode? As it turns out, it does not.
