@@ -1,6 +1,6 @@
 # Distributed business processes
 
-In the previous post we explain what a messaging infrastructure is. We showed that it is necessarily a distributed thing with parts running in different processes. We've seen the trade-offs involved in building the messaging infrastructure and what conditions must be met to guarantee consistent message processing on top of such infrastructure. This time we will explain why it is reasonable to expect that most line-of-business systems require a messaging infrastructure.
+In the [previous post](https://exactly-once.github.io/posts/messaging-infrastructure/) we explained what a messaging infrastructure is. We showed that it is necessarily a distributed thing with parts running in different processes. We've seen the trade-offs involved in building the messaging infrastructure and what conditions must be met to guarantee consistent message processing on top of such infrastructure. This time we will explain why it is reasonable to expect that most line-of-business systems require a messaging infrastructure.
 
 ## Architecture is not an exact science
 
@@ -10,9 +10,11 @@ There are two types of architects our there. There are ones that will tell you e
 
 The most fundamental thing in line-of-business software is a state change. State changes are the very reason we build such software. A system reacts on real-world events by changing its state. When you click "submit" an order entity is created. On the other end the state change of the system triggers an event in the real world. When the order is state is set to "payment succeeded" the parcel is dispatched to the courier.
 
-## State change chains
+## Chains of state changes
 
-A system as described above consists of a single data store and a single processing component. That's not how modern software systems are built. Regardless of your approach to architecture, the system is, sooner or later, going to consist of multiple components. One common thing that we can identify in such a system are chains of state changes, one triggering another.
+A system as described above consists of a single data store and a single processing component. That is not how modern software systems are built. Regardless of your approach to architecture, the system is, sooner or later, going to consist of multiple components. One common thing that we can identify in such a system is chains of state changes, one triggering another.
+
+TODO: Simple diagram
 
 When you click "submit", the order and shipment entities are created. When the payment succeeds the order entity is modified. But that's not enough to get you need phone delivered to your door. When the order state is set to "payment succeeded", the shipment entity has to be modified too in order to unlock the delivery. One state change triggers another state change, possibly in another part of the system.
 
