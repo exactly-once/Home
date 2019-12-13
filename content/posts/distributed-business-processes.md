@@ -4,11 +4,13 @@ In the [previous post](https://exactly-once.github.io/posts/messaging-infrastruc
 
 ## Architecture is not an exact science
 
-There are two types of architects our there. There are ones that will tell you exactly what patterns and technologies you should use even before you have a chance to explain them what problem your system is solving. There are also ones that will tell you either "it depends" or "you milage may vary" even if you given them exact specification of the application. That says a lot. Software architecture is not an exact science. There is very little hard rules justified by solid research. Most of it boils doing to which conference you have attended recently. But do not despair. It turns out that if you look under the buzzword-ridden surface, there are actually concepts there that can be studied with more rigour.
+There are two types of architects our there. There are ones that will tell you exactly what patterns and technologies you should use even before you have a chance to explain them what problem your system is solving. There are also ones that will tell you either "it depends" or "you milage may vary" even if you have given them exact specification of the application. That says a lot. Software architecture is not an exact science. There are hardly any rules justified by solid research. Most of it boils down to which conference you have attended recently. But do not despair. It turns out that if you look under the buzzword-ridden surface, there are actually concepts out there that can be studied with more rigour.
 
 ## State change
 
-The most fundamental thing in line-of-business software is a state change. State changes are the very reason we build such software. A system reacts on real-world events by changing its state. When you click "submit" an order entity is created. On the other end the state change of the system triggers an event in the real world. When the order is state is set to "payment succeeded" the parcel is dispatched to the courier.
+The most fundamental thing in line-of-business software is a state change. State changes are the very reason we build such software. A system reacts on real-world events by changing its internal state. When you click "submit" an order entity is created. On the other end the state change of the system triggers an event in the real world. When the order is state is set to "payment succeeded" the parcel is dispatched to the courier.
+
+TODO: System diagram
 
 ## Chains of state changes
 
