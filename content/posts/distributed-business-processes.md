@@ -10,13 +10,14 @@ There are two types of architects our there. There are ones that will tell you e
 
 The most fundamental thing in line-of-business software is a state change. State changes are the very reason we build such software. A system reacts on real-world events by changing its internal state. When you click "submit" an order entity is created. On the other end the state change of the system triggers an event in the real world. When the order is state is set to "payment succeeded" the parcel is dispatched to the courier.
 
-TODO: System diagram
+{{< figure src="/posts/software-system.png" title="Software system">}}
 
 ## Chains of state changes
 
 A system as described above consists of a single data store and a single processing component. That is not how modern software systems are built. Regardless of your approach to architecture, the system is, sooner or later, going to consist of multiple components. One common thing that we can identify in such a system is chains of state changes, one triggering another.
 
-TODO: Simple diagram
+
+{{< figure src="/posts/chains.png" title="Chains of state changes">}}
 
 When you click "submit", the order and shipment entities are created. When the payment succeeds the order entity is modified. But that's not enough to get you need phone delivered to your door. When the order state is set to "payment succeeded", the shipment entity has to be modified too in order to unlock the delivery. One state change triggers another state change, possibly in another part of the system.
 
@@ -61,10 +62,19 @@ We receive a message and invoke the idempotent state change operation. Now we sh
 
 ## The input-core-output model
 
-Based on the above one can create a model of a distributed system that consists of three layers. The first layer is the input layer. It consists of components that handle synchronous communication with the external world. The famous shopping basket component fits in this layer.
+Based on the above one can create a model of a distributed system that consists of three layers. 
+
+{{< figure src="/posts/layers.png" title="Layers">}}
+
+The first layer is the input layer. It consists of components that handle synchronous communication with the external world. The famous shopping basket component fits in this layer.
 
 Next up is the core layer. Between the input and the core layers there is the [sync-async boundary](https://exactly-once.github.io/posts/sync-async-boundary/). Components sitting at the boundary generate async messages compatible with consistent messaging rules based on the data captured in the input layer. The core layer consists of message handlers capable of communicating according to the rules of consistent messaging. Distributed business processes such the order handling process or shipping process live here.
 
 The third layer is the output layer. It consists of message handlers that are *merely* idempotent. Although their logic handles duplicate messages correctly, they are not able to emit messages that could trigger follow-up state transitions. You might find here a message handler that processes an `InvoiceRequested` event and generates a PDF document to be stored in the Blob Storage. If the triggering message gets duplicated, the handler will generate another copy of the PDF document but will detect duplication when attempting to store a new blob. You might also find here a handler that processes `AuthorizeCreditCard` commands and calls external payment API. Because such a handler takes the `PaymentId` field of the incoming message and sends as `TransactionReference` to the payment provider, that provider can correctly de-duplicate calls.
+
+The layers in this model are orthogonal to functional decomposition of the system (e.g. into services). Each service contains components in all the layers.
+
+
+{{< figure src="/posts/layers-services.png" title="Services in layered model">}}
 
 In this model messages always flow left-to-right between the layers. Inter-layer messages are only allowed in the core layer. Can you fit your distributed system into this model? We would like to hear your opinions. Challenge us on Twitter!
