@@ -4,7 +4,9 @@ In the [previous post](https://exactly-once.github.io/posts/messaging-infrastruc
 
 ## Architecture is not an exact science
 
-There are two types of architects our there. There are ones that will tell you exactly what patterns and technologies you should use even before you have a chance to explain them what problem your system is solving. There are also ones that will tell you either "it depends" or "you milage may vary" even if you have given them exact specification of the application. That says a lot. Software architecture is not an exact science. There are hardly any rules justified by solid research. Most of it boils down to which conference you have attended recently. But do not despair. It turns out that if you look under the buzzword-ridden surface, there are actually concepts out there that can be studied with more rigour.
+There are two types of architects out there. There are ones that will tell you exactly what patterns and technologies you should use even before you have a chance to explain what is the problem your system is solving. There are also ones that will tell you either "it depends" or "you milage may vary" even if you have given them the exact specification of the application. That says a lot. 
+
+Software architecture is not an exact science. There are hardly any rules backed by solid research. Most of it boils down to which conference you have attended recently. But do not despair. It turns out that if you look under the buzzword-ridden surface, there are concepts out there that can be studied with more rigor.
 
 ## State change
 
