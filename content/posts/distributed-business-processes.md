@@ -10,18 +10,18 @@ Software architecture is not an exact science. There are hardly any rules backed
 
 ## State change
 
-The most fundamental thing in line-of-business software is a state change. State changes are the very reason we build such software. A system reacts on real-world events by changing its internal state. When you click "submit" an order entity is created. On the other end the state change of the system triggers an event in the real world. When the order is state is set to "payment succeeded" the parcel is dispatched to the courier.
+The most fundamental thing in line-of-business software is a state change. State changes are the very reason we build such software. A system reacts to real-world events by changing its internal state - when you click "submit" an order entity is created. Conversely, a state change of the system triggers an event in the real world - when order state changes to "payment succeeded" the parcel is dispatched to the courier.
 
 {{< figure src="/posts/software-system.png" title="Software system">}}
 
 ## Chains of state changes
 
-A system as described above consists of a single data store and a single processing component. That is not how modern software systems are built. Regardless of your approach to architecture, the system is, sooner or later, going to consist of multiple components. One common thing that we can identify in such a system is chains of state changes, one triggering another.
+A system as described above consists of a single data store and a single processing component. That is not how modern software systems are built. Regardless of your approach to architecture, the system is, sooner or later, going to consist of multiple components. One common thing that we can identify in such a system are chains of state changes, one triggering another.
 
 
 {{< figure src="/posts/chains.png" title="Chains of state changes">}}
 
-When you click "submit", the order and shipment entities are created. When the payment succeeds the order entity is modified. But that's not enough to get you need phone delivered to your door. When the order state is set to "payment succeeded", the shipment entity has to be modified too in order to unlock the delivery. One state change triggers another state change, possibly in another part of the system.
+When you click "submit", the order and shipment entities are created. When the payment succeeds the order entity is modified. But that's not enough to get your new phone delivered to your door. When the order state is set to "payment succeeded", the shipment entity has to be modified too in order to unlock the delivery. One state change triggers another state change, possibly in another part of the system.
 
 ## Distributed business processes
 
@@ -52,15 +52,17 @@ We mentioned [consistent messaging](https://exactly-once.github.io/posts/consist
 
 >we want an endpoint to produce observable side-effects equivalent to some execution in which each logical message gets processed exactly-once. Equivalent meaning that it’s indistinguishable from the perspective of any other endpoint.
 
-Now we can see that this definition is not enough to guarantee correct distributed business process execution. In addition to the above, we also need causal order and reliable delivery. That translates an additional clause:
+Now we can see that this definition is not enough to guarantee robust and non-confusing distributed business process execution. We need causal order and reliable delivery in addition to the above. That translates an additional clause:
 
->if the side effects include sending out messages, the messages should not be dispatched before other side effects are persisted. Dispatched messages should be stored durably.
+>if message processing includes state changes and sending out messages, the state changes should be visible to the outside observer before messages get sent.
 
 ## Idempotence is not enough
 
-It is a common misconception that idempotence, as a property of a persistence code, is all that is required to build distributed systems. Well, not when distributed business processes are considered. Let's assume that the state change application is idempotent. That means it can be applied multiple times and the side effects (in this case the state of the data) is exactly the same as if it was applied only once. We will now use that idempotent state change operation in our message handler. The handler is receiving messages and sending out messages to trigger the follow-up state change.
+It is a common misconception that idempotence, as a property of a persistence code, is all that is required to build distributed systems. Well, not when distributed business processes are considered. Let's assume that the operation that applies a state change is idempotent. That means it can be applied multiple times and the side effects (in this case the state of the data) is exactly the same as if it was applied only once. 
 
-We receive a message and invoke the idempotent state change operation. Now we should send out a messages that informs about the state change. But what state change? We don't know if any state change occurred as part of this execution. All we know is the current state is exactly as if the change occurred exactly once. The only message we can send would carry the current state. Such a message is useless as far as distributed business processes are concerned because it cannot trigger any follow-up changes. The distributed business process cannot continue.
+We will now use that idempotent state change operation in our message handler. The handler is receiving messages and sending out messages to trigger the follow-up state change.
+
+The handler receives a message and invokes the idempotent state change operation. Now we should send out a message that informs about the state change. But what state change? We don't know if any state change occurred as part of this execution. All we know is the current state is exactly as if the change occurred exactly once. The only message we can send would carry the current state. Such a message is useless as far as distributed business processes are concerned because it cannot trigger any follow-up changes. The distributed business process cannot continue.
 
 ## The input-core-output model
 
