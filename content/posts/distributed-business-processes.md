@@ -1,4 +1,10 @@
-# Distributed business processes
+---
+layout: post
+title: Distributed business processes
+date: 2020-01-21
+
+---
+
 
 In the [previous post](https://exactly-once.github.io/posts/messaging-infrastructure/) we explained what a messaging infrastructure is. We showed that it is necessarily a distributed thing with parts running in different processes. We've seen the trade-offs involved in building the messaging infrastructure and what conditions must be met to guarantee consistent message processing on top of such infrastructure. This time we will explain why it is reasonable to expect that most line-of-business systems require a messaging infrastructure.
 
@@ -18,7 +24,7 @@ The most fundamental thing in line-of-business software is a state change. State
 
 A system as described above consists of a single data store and a single processing component. That is not how modern software systems are built. Regardless of your approach to architecture, the system is, sooner or later, going to consist of multiple components. One common thing that we can identify in such a system are chains of state changes, one change triggering another.
 
-{{< figure src="/posts/chains.png" title="Chains of state changes">}}
+{{< figure src="/posts/chain.png" title="Chains of state changes">}}
 
 When you click "submit", the order and shipment entities are created. When the payment succeeds the order entity is modified. But that's not enough to get your new phone delivered to your door. When the order state is set to "payment succeeded", the shipment entity has to be modified too to trigger the delivery. One state change causes another state change, possibly in another part of the system.
 
