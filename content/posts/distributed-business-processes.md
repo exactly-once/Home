@@ -71,16 +71,14 @@ The handler receives a message and invokes the idempotent state change operation
 
 ## Layered model
 
-We can represent a system described above as three concentric circles.
+Based on the above one can create a model of a distributed system that consists of three layers. 
 
 {{< figure src="/posts/layers.png" title="Layers">}}
 
-The outermost circle is the input layer. It consists of components that handle synchronous communication with the external world. The famous shopping basket component fits in this layer.
+The first layer is the input layer. It consists of components that handle synchronous communication with the external world. The famous shopping basket component fits here.
 
-Next up is the state machine layer. Between the input and the state machine layers, there is the [sync-async boundary](https://exactly-once.github.io/posts/sync-async-boundary/). Components sitting at the boundary generate async messages compatible with consistent messaging rules based on the data captured in the input layer. The state machine layer implements the business logic of the system e.g. the order handling process or shipping process via message exchange between the state machines.
+Next up is the core layer. Between the input and the core layers, there is the [sync-async boundary](https://exactly-once.github.io/posts/sync-async-boundary/). Components sitting at the boundary generate async messages compatible with consistent messaging rules based on the data captured in the input layer. The core layer consists of message handlers capable of communicating according to the rules of consistent messaging. Distributed business processes such as the order handling process or shipping process live here.
 
-The third, innermost, circle consists of message handlers that are *merely* idempotent. Although their logic handles duplicate messages correctly, they are not able to emit messages that comply with consistent messaging rules. As a result, these endpoints cannot trigger follow-up state transitions. You can think about these endpoints as *message sinks*. You might find here a message handler that processes an `InvoiceRequested` event and generates a PDF document to be stored in the Blob Storage. If the triggering message gets duplicated, the handler will generate another copy of the PDF document but will detect duplication when attempting to store a new blob. You might also find here a handler that processes `AuthorizeCreditCard` commands and calls external payment API. Because such a handler takes the `PaymentId` field of the incoming message and sends as `TransactionReference` to the payment provider, that provider can correctly de-duplicate calls.
-
-In this model messages always flow from the outside to the inside. Inter-layer messages are only allowed in the middle layer. 
+The third layer is the output layer, consisting of message handlers that are *merely* idempotent. Although their logic handles duplicate messages correctly, they are not able to emit messages that could trigger follow-up state transitions. You might find here a message handler that processes an `InvoiceRequested` event and generates a PDF document to be stored in the Blob Storage. If the triggering message gets duplicated, the handler will generate another copy of the PDF document but will detect duplication when attempting to store a new blob. You might also find here a handler that processes `AuthorizeCreditCard` commands and calls external payment API. Because such a handler takes the `PaymentId` field of the incoming message and sends as `TransactionReference` to the payment provider, that provider can correctly de-duplicate calls. In this model messages always flow left-to-right between the layers. Inter-layer messages are only allowed in the core layer. 
 
 Can you fit your distributed system into this model? We would like to hear your opinions. Challenge us on Twitter!
