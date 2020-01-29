@@ -18,7 +18,7 @@ The state-based approach to consistent messaging comes with few assumptions:
 
 At a high level, what we want is to make sure that any message gets applied on the state at most once and secondly that message duplicates produce the same output messages on re-processing. Given the assumptions here is a draft of the approach:
 
-```C# {linenos=table,hl_lines=[8,"15-17"],linenostart=199}
+{{< highlight c "linenos=table,hl_lines=2 5-6,linenostart=1" >}}
 foreach(var msg in Messages)
 {
     var (state, version) = LoadState(msg.BusinessId, msg.Id);
@@ -32,7 +32,7 @@ foreach(var msg in Messages)
 
     Publish(outputMessages);
 }
-```
+{{< / highlight >}}
 
 Let's go one line at a time as the code doesn't tell the whole story. First we load a piece of state based on `BusinessId` and `Id` of the message. What `LoadState` returns is either the newest version of the sate if a mesasge with `Id` has not been applied on the state yet **or the version proceeding the one which was the result of processing this message**. In other words, we are retrieving either the newest version or the version used to process the message the last time it was handled. From the calling code perspective these two scenarios can be deferentianted based on the `DuplicatedMessages` flag set by the state loading logic.
 
