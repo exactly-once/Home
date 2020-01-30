@@ -4,21 +4,22 @@ title: State-based consistent messaging
 date: 
 ---
 
-In the previous posts we described cosistent messaging and justified it's usefulness in building robust distributed systems. Enough with the theory, it's high time to show some code! First comes the state-based approach.
+In the previous posts, we described consistent messaging and justified its usefulness in building robust distributed systems. Enough with the theory, it's high time to show some code! First comes the state-based approach.
 
 ## Context
 
-The state-based approach to consistent messaging comes with few assumptions:
+State-based consistent messaging comes with two requirements:
 
-* "Point-in-time" state availability - we require that it's possible to restore any past state version,
-* Message handling logic is deterministic aka. pure function - as long as the state version and input message are the same the executing handler logic will result in identical state modifications and output messages
-* The state storage provides concurrency control - the store used for enpoint state enables handling "concurrent write" conflicts
+* "Point-in-time" state availability - it's possible to restore any past version of the state.
+* Deterministic message handling logic - for a set state and input message every handler execution gives the same result.
 
 ## Idea
 
-At a high level, what we want is to make sure that any message gets applied on the state at most once and secondly that message duplicates produce the same output messages on re-processing. Given the assumptions here is a draft of the approach:
+Given the requirements, the general idea of how to achieve consistent message processing is quite simple. When dealing with a message duplicate we need to make sure the handler operates on the same state as when the message was first processed. With this and deterministic handler logic (handler being a pure function), we ensure that processing of a message duplicate results in identical state changes and output messages. 
+ 
+Here is a pseudo-code implementation:
 
-{{< highlight c "linenos=table,hl_lines=2 5-6,linenostart=1" >}}
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 foreach(var msg in Messages)
 {
     var (state, version) = LoadState(msg.BusinessId, msg.Id);
@@ -34,26 +35,46 @@ foreach(var msg in Messages)
 }
 {{< / highlight >}}
 
-Let's go one line at a time as the code doesn't tell the whole story. First we load a piece of state based on `BusinessId` and `Id` of the message. What `LoadState` returns is either the newest version of the sate if a mesasge with `Id` has not been applied on the state yet **or the version proceeding the one which was the result of processing this message**. In other words, we are retrieving either the newest version or the version used to process the message the last time it was handled. From the calling code perspective these two scenarios can be deferentianted based on the `DuplicatedMessages` flag set by the state loading logic.
+First, we load a piece of state based on `BusinessId` and `Id` of the message. `LoadState` returns either the newest version of the sate or if the message is a duplicate, **a version proceeding the one which was the result of processing that message**. In other words, `LoadState` makes sure that the properly recreate historical state for duplicates.
 
-Next, the business logic gets invoked via `InvokeHandler` call which modifies the state and produces `outputMessages`. Finally, based on the `DuplciatedMessage` flag, we either store the state or skip it and later publish `outputMessages`. The concurrent modification of the state is handled by the `version` argument used for optimistic concurrency control.
+These two scenarios (new vs. duplicate message) are represented in code by `DuplicatedMessages` flag. Based on its value the sate update step is either performed or skipped.
+
+It's worth noting that message publication comes last and it's for a reason. Optimistic concurrency control based on the `version`  argument makes sure that in case of a race condition processing will fail before any [ghost message]() get published. 
 
 ### Implementation
 
-TODO: link to repo and information on the technologies included
+The source code shown here only in parts can be found in [exactly-once](https://github.com/exactly-once/state-based-consistent-messaging) GitHub repository. 
 
 #### State management
 
-With the general idea of the soutions let's look at the implementation details. We will use [EventSourcing](link) for storing the state as by definition it enables accessing historical versions of the state. More concretlly, we will use [StreamStone]() libarary which enables event sourcing over Azure TableStorage.
+With the general idea of the solution let's look at the implementation details. It uses [EventSourcing](link) for storing the state which is by definition fulfills the requirement on state storage. More concretely, we will use [StreamStone](link) library which provides event store API on top of Azure Table Storage.
 
-One of the outstading questions to answer is how does the state storage manage the connection between the message id and the version of the state that is requried. Here is a diagram that shows what is tha exactly gets stored in the event stream:
+One of the questions that we still need to answer is how does the state storage manages the mapping between the id of the message and a given version of the state. This is done by leveraging event properties stored in addition to the event data itself. Here is a diagram that shows what is stored in the event stream as the messages get processed:
 
-{{< figure src="/posts/state-based-storage-layout.png" title="Event sourced state with message processing metadata">}}
+{{< figure src="/posts/state-based-storage-layout.png" title="State stream for a [A, D, B] message processing sequence">}}
 
-Every event that gets persisted includes additional metadata. Amongst others, this includes message id  
+Amongst others, the properties include a message identifier that enables detecting duplicates and restoring an appropriate version of the state.  During state recreation (aka. [rehydration](link)), when reading events from the stream the metadata field is checked to see if the current message identifier matches the one already captured. If so the rehydration process stops before reaching the end of the stream:  
 
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
+var stream = await ReadStream(partition, properties =>
+{
+      var mId = properties["MessageId"].GuidValue;
+      var @event = DeserializeEvent(properties);
 
-TODO: show code that retries the data and sets `Duplicated` flag.
+      if (mId == messageId)
+      {
+         isDuplicate = true;
+      } 
+      else if (@event != null)
+      {
+         state.Apply(@event);
+      }
+
+      return isDuplicate;
+});
+{{< / highlight >}}
+
+The lambda passed as the last argument to `ReadStream` gets invoked for every event in a stream unless it returns false which indicates the end of the read. 
 
 #### Processing logic
 
@@ -61,10 +82,12 @@ TODO: show the handler logic and show why it needs to be deterministic
   * Discuss time, guid, random consideration
 
 
+
 ### Pattern
  * Context
  * Tradeoffs
  * Pros and cons
+   * Versioning is a problem
 
 
 
