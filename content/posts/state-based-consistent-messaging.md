@@ -76,39 +76,76 @@ var stream = await ReadStream(partition, properties =>
 
 The lambda passed as the last argument to `ReadStream` gets invoked for every event in a stream unless it returns false which indicates the end of the read. 
 
+The duplicate detection requires that input message id is always captured, even if handling logic execution results in no state changes - [ShootingRange](https://github.com/exactly-once/state-based-consistent-messaging/blob/master/StateBased.ConsistentMessaging/StateBased.ConsistentMessaging/Domain/ShootingRange.cs#L9) handler logic for `FireAt` message is a good example of such case. In order to handle such case a dummy event is being stored with empty state delta.
+
 #### Processing logic
 
-TODO: show the handler logic and show why it needs to be deterministic
-  * Discuss time, guid, random consideration
+At the business logic level the message handling doesn't require any infrastructural checks to ensure consistency:
+
+{{< highlight c "linenos=inline,hl_lines=7,linenostart=1" >}}
+public void Handle(IHandlerContext context, FireAt command)
+{
+   if (Data.TargetPosition == command.Position)
+   {
+         context.Publish(new Hit
+         {
+            Id = context.NewGuid(),
+            GameId = command.GameId
+         });
+   }
+   else
+   {
+         context.Publish(new Missed
+         {
+            Id = context.NewGuid(),
+            GameId = command.GameId
+         });
+   }
+}
+{{< / highlight >}}
+
+That said, line 7 where `Hit` message id is generated deserves more discussion. We are not using a standard libarary call to generate a Guid for a reason. As `Guid` generation logic is undeterministic form business logic perspective we can't use without breaking the second [requirement](#context). We need to make sure that on every re-processing of the same message the value of the guid will be identical to the origianl one. Some kind of seed data is needed to enable that - in our example the input message id plays that role and gets passed to the context just before handler execution:
+
+{{< highlight c "linenos=inline,hl_lines=4,linenostart=1" >}}
+static List<Message> InvokeHandler<THandler, THandlerState>(...)
+{
+   var handler = new THandler();
+   var handlerContext = new HandlerContext(inputMessage.Id);
+
+   ((dynamic) handler).Data = state;
+   ((dynamic) handler).Handle(handlerContext, inputMessage);
+   
+   return handlerContext.Messages;
+}
+{{< / highlight >}}
 
 
+Guid generation scenario touches on a more general case. The same kind of problem will exist for logic that uses random variables, time offsets or any other environmental variables that can change in between message invocations. In order to handle these cases as well we would need to caputre necessary invocation context in the event metadata (as show on the ) and expose utility methods on the `IHandlerContext` intance passed to the business logic.  
 
-### Pattern
- * Context
- * Tradeoffs
- * Pros and cons
-   * Versioning is a problem
+TODO: add information that only available operations are state modifications and message publication
 
+### Pros and cons
 
+We already mentioned the requirements needed for the state-based approach to message consistency. It's time to clarify what are advantages and disadvantages of this approach.
 
-ToC:
+Advantages:
 
- - What is consistent messaging? Two parts: state changes and output messages
- - Approach that assumes:
-    - "Point-in-time" state availability (event sorucing is just one example)
-    - Deterministic message handler logic
-    - Concurrency control on the state changes
- - Algorithm
-    - We have a sequence of states each state is "after-msg-x-being-processed"
-    - We extend the state with message logical id,
-    - When a message arrives we check if it's already been processed
- - Most interesting code fragments
-    - How we invoke the handler and operate over event sourced data
- - Summary
-    - Context:
-    - Pros:
-    - Cons:
- - Stay tuned
+* Easy additon to event sorucing.
+* Flexible de-duplication period based on the stream truncation rules.
 
+Disadvantages
 
+* Versioning might be harder.
+* Stream size is proportional to number of messages processed.
+* Esuring deterministic logic requires attention.
+
+### Other approaches
+
+AzureFunctions and asnc-await
+
+TODO: 
+ * talk about de-duplication period configuration, 
+ * check links and add link to AzureFunctions
+
+ 
 [^1]: 
