@@ -3,6 +3,17 @@ languageCode = "en-us"
 title = "Exactly Once"
 googleAnalytics = "UA-147074711-1"
 theme = "hyde"
+[markup]
+  [markup.highlight]
+    codeFences = true
+    guessSyntax = false
+    hl_Lines = ""
+    lineNoStart = 1
+    lineNos = false
+    lineNumbersInTable = true
+    noClasses = true
+    style = "monokai"
+    tabWidth = 4
 [params]
   layoutReverse = false
   author = 'Tomek Masternak, Szymon Pobiega'
