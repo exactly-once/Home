@@ -35,48 +35,57 @@ foreach(var msg in Messages)
 }
 {{< / highlight >}}
 
-First, we load a piece of state based on `BusinessId` and `Id` of the message. `LoadState` returns either the newest version of the sate or if the message is a duplicate, **a version proceeding the one which was the result of processing that message**. In other words, `LoadState` makes sure that the properly recreate historical state for duplicates.
-
-These two scenarios (new vs. duplicate message) are represented in code by `DuplicatedMessages` flag. Based on its value the sate update step is either performed or skipped.
+First, we load a piece of state based on `BusinessId` and `Id` of the message. `LoadState` returns either the newest version of the state or if the message is a duplicate, **a version just before the one when message was first processed**. In other words, `LoadState` makes sure to recreate the proper version of the state for duplicates. These two scenarios (new vs. duplicate message) are represented in code by `DuplicatedMessages` flag. Based on its value the state changes are either applied or skipped (for duplicates the state changes were already applied).
 
 It's worth noting that message publication comes last and it's for a reason. Optimistic concurrency control based on the `version`  argument makes sure that in case of a race condition processing will fail before any [ghost message]() get published. 
 
 ### Implementation
 
-The source code shown here only in parts can be found in [exactly-once](https://github.com/exactly-once/state-based-consistent-messaging) GitHub repository. 
+Listings below show only the most intersting parts of the implementation. Full source code can be found in [exactly-once](https://github.com/exactly-once/state-based-consistent-messaging) GitHub repository.
 
 #### State management
 
-With the general idea of the solution let's look at the implementation details. It uses [EventSourcing](link) for storing the state which is by definition fulfills the requirement on state storage. More concretely, we will use [StreamStone](link) library which provides event store API on top of Azure Table Storage.
+With the general idea of the solution in place let's look at the implementation details. For storing the state we use [StreamStone]() library that provides event store API on top of Azure Table Storage.
 
-One of the questions that we still need to answer is how does the state storage manages the mapping between the id of the message and a given version of the state. This is done by leveraging event properties stored in addition to the event data itself. Here is a diagram that shows what is stored in the event stream as the messages get processed:
+One of the questions that we still need to answer is how to store the mapping id to state version mapping. This is done by storing message id as event property for each entry in the stream. 
 
 {{< figure src="/posts/state-based-storage-layout.png" title="State stream for a [A, D, B] message processing sequence">}}
 
-Amongst others, the properties include a message identifier that enables detecting duplicates and restoring an appropriate version of the state.  During state recreation (aka. [rehydration](link)), when reading events from the stream the metadata field is checked to see if the current message identifier matches the one already captured. If so the rehydration process stops before reaching the end of the stream:  
+When a new message gets processed a new version of the state is stored in an event which includes additional metatdata. These include message identifier that enables duplicates detection and restoring an appropriate version of the state. In `LoadState` when reading events from the stream the metadata field is checked to see if the current message identifier matches the one already captured. If so the process stops before reaching the end of the stream:  
 
 {{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
+// `ReadStream` iterates over a stream passing each event to
+// the lambda. Iteration stops when reaching the end of the 
+// stream or when lambda returns `false`.
 var stream = await ReadStream(partition, properties =>
 {
       var mId = properties["MessageId"].GuidValue;
-      var @event = DeserializeEvent(properties);
+      var nextState = DeserializeEvent<THandlerState>(properties);
 
       if (mId == messageId)
       {
          isDuplicate = true;
       } 
-      else if (@event != null)
+      else
       {
-         state.Apply(@event);
+         state = nextState;
       }
 
       return isDuplicate;
 });
 {{< / highlight >}}
 
-The lambda passed as the last argument to `ReadStream` gets invoked for every event in a stream unless it returns false which indicates the end of the read. 
+The duplicate detection requires that input message id is always captured, even if handling logic execution results in no state changes - [ShootingRange](https://github.com/exactly-once/state-based-consistent-messaging/blob/master/StateBased.ConsistentMessaging/StateBased.ConsistentMessaging/Domain/ShootingRange.cs#L9) handler logic for `FireAt` message is a good example of such case.
 
-The duplicate detection requires that input message id is always captured, even if handling logic execution results in no state changes - [ShootingRange](https://github.com/exactly-once/state-based-consistent-messaging/blob/master/StateBased.ConsistentMessaging/StateBased.ConsistentMessaging/Domain/ShootingRange.cs#L9) handler logic for `FireAt` message is a good example of such case. In order to handle such case a dummy event is being stored with empty state delta.
+Versoning of the state doesn't surface to the busniess logic and is represented as POCO e.g.:
+
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
+public class ShootingRangeData
+{
+   public int TargetPosition { get; set; }
+   public int NumberOfAttempts { get; set; }
+}
+{{< / highlight >}}
 
 #### Processing logic
 
@@ -101,10 +110,20 @@ public void Handle(IHandlerContext context, FireAt command)
             GameId = command.GameId
          });
    }
+
+   if (Data.NumberOfAttempts + 1 >= MaxAttemptsInARound)
+   {
+         Data.NumberOfAttempts = 0;
+         Data.TargetPosition = context.Random.Next(0, 100);
+   }
+   else
+   {
+         Data.NumberOfAttempts++;
+   }
 }
 {{< / highlight >}}
 
-That said, line 7 where `Hit` message id is generated deserves more discussion. We are not using a standard libarary call to generate a Guid for a reason. As `Guid` generation logic is undeterministic form business logic perspective we can't use without breaking the second [requirement](#context). We need to make sure that on every re-processing of the same message the value of the guid will be identical to the origianl one. Some kind of seed data is needed to enable that - in our example the input message id plays that role and gets passed to the context just before handler execution:
+That said, line 7 where `Hit` message id is generated deserves more discussion. We are not using a standard libarary call to generate new `Guid` version for a reason. As `Guid` generation logic is undeterministic from business logic perspective we can't use it without breaking the second [requirement](#context). We need to make sure that re-processing of a message results identical output messages (including their identifiers). Some kind of seed data is needed to enable that - in our example the input message id plays that role and gets passed to the context just before handler execution:
 
 {{< highlight c "linenos=inline,hl_lines=4,linenostart=1" >}}
 static List<Message> InvokeHandler<THandler, THandlerState>(...)
@@ -119,25 +138,33 @@ static List<Message> InvokeHandler<THandler, THandlerState>(...)
 }
 {{< / highlight >}}
 
+Guid generation scenario touches on a more general case. The same kind of problem exists when using random variables, time offsets or any other environmental variables that might change in between handler invocations. In order to handle these cases we would need to caputre additional invocation context in the event metadata (as show on the diagram) and expose utility methods on the `IHandlerContext` instance passed to the business logic.  
 
-Guid generation scenario touches on a more general case. The same kind of problem will exist for logic that uses random variables, time offsets or any other environmental variables that can change in between message invocations. In order to handle these cases as well we would need to caputre necessary invocation context in the event metadata (as show on the ) and expose utility methods on the `IHandlerContext` intance passed to the business logic.  
+In summary, for the handler to be deterministic it need to operate over business state and/or additional context data that gets captured during message processing.
 
-TODO: add information that only available operations are state modifications and message publication
+#### Mind the gap 
+
+The implementation of state-based consistent messaging has some gaps that require mentioning. First, in most real-world applications the state version storage reqruires clean-up. At some point the older versions are no longer needed e.g. after `n` number of days, and should be removed. This most likely requires some background clean-up process making sure this happens.
+
+Secondly, the approach sotring the state has been chosen for it's clarity. It is likely that in production scenarios this might require optimizations from the storage size perspective e.g. storing state deltas instead of the whole snapshots and removing deltas for versions that already had their messages published.
+
+Finally, the decission to hide state version from the business logic might not be necessary. In systems using [event sourcing]() for representing state the state-based approach might be integrated into persistence logic.
 
 ### Pros and cons
 
 We already mentioned the requirements needed for the state-based approach to message consistency. It's time to clarify what are advantages and disadvantages of this approach.
 
 Advantages:
-
 * Easy additon to event sorucing.
 * Flexible de-duplication period based on the stream truncation rules.
 
-Disadvantages
+Disadvantages:
+* Ensuring deterministic logic requires attention - making sure logic is deterministic might be error prone (though there is some [tooling]() that migth mitigate this)
+* Managing business logic changes - changing business logic needs to be able to cope with historical versions of the state
+* Stream size is proportional to number of messages processed - even if messages do not generate state changes
 
-* Versioning might be harder.
-* Stream size is proportional to number of messages processed.
-* Esuring deterministic logic requires attention.
+
+#### 
 
 ### Other approaches
 
