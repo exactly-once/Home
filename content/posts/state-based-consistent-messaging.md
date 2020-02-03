@@ -1,7 +1,7 @@
 ---
 layout: post
 title: State-based consistent messaging
-date: 
+date: 2020-03-02
 ---
 
 In the previous posts, we described consistent messaging and justified its usefulness in building robust distributed systems. Enough with the theory, it's high time to show some code! First comes the state-based approach.
