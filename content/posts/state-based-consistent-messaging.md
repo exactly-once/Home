@@ -35,23 +35,23 @@ foreach(var msg in Messages)
 }
 {{< / highlight >}}
 
-First, we load a piece of state based on `BusinessId` and `Id` of the message. `LoadState` returns either the newest version of the state or if the message is a duplicate, **a version just before the one when message was first processed**. In other words, `LoadState` makes sure to recreate the proper version of the state for duplicates. These two scenarios (new vs. duplicate message) are represented in code by `DuplicatedMessages` flag. Based on its value the state changes are either applied or skipped (for duplicates the state changes were already applied).
+First, we load a piece of state based on `BusinessId` and `Id` of the message. `LoadState` returns either the newest version of the state or if the message is a duplicate, **a version just before the one when the message was first processed**. In other words, `LoadState` makes sure to recreate the proper version of the state for duplicates. These two scenarios (new vs. duplicate message) are distinguished based on `DuplicatedMessages` flag. Based on its value the state update is either applied or skipped.
 
-It's worth noting that message publication comes last and it's for a reason. Optimistic concurrency control based on the `version`  argument makes sure that in case of a race condition processing will fail before any ghost message get published. 
+It's worth noting that message publication comes last and it's for a reason. Optimistic concurrency control based on the `version`  argument makes sure that in case of a race condition processing will fail before any ghost messages get published. 
 
 ### Implementation
 
-Listings below show only the most intersting parts of the implementation. Full source code can be found in [exactly-once](https://github.com/exactly-once/state-based-consistent-messaging) GitHub repository.
+Listings below show only the most interesting parts of the implementation. Full source code can be found in [exactly-once](https://github.com/exactly-once/state-based-consistent-messaging) repository.
 
 #### State management
 
 With the general idea of the solution in place let's look at the implementation details. For storing the state we use [Streamstone](https://github.com/yevhen/Streamstone) library that provides event store API on top of Azure Table Storage.
 
-One of the questions that we still need to answer is how to store the mapping id to state version mapping. This is done by storing message id as event property for each entry in the stream. 
+One of the questions that we still need to answer is how to store the "message-id to state version" mapping. This is done by storing message id as a property of an event for each entry in the stream. 
 
 {{< figure src="/posts/state-based-storage-layout.png" title="State stream for a [A, D, B] message processing sequence">}}
 
-When a new message gets processed a new version of the state is stored in an event which includes additional metatdata. These include message identifier that enables duplicates detection and restoring an appropriate version of the state. In `LoadState` when reading events from the stream the metadata field is checked to see if the current message identifier matches the one already captured. If so the process stops before reaching the end of the stream:  
+When a new message gets processed a new version of the state is stored as an event that includes additional message metadata. These include a message identifier that enables duplicates detection and restoring an appropriate version of the state. In `LoadState` when reading events from the stream the metadata field is checked to see if the current message identifier matches the one already captured. If so the process stops before reaching the end of the stream:  
 
 {{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 // `ReadStream` iterates over a stream passing each event to
@@ -77,7 +77,7 @@ var stream = await ReadStream(partition, properties =>
 
 The duplicate detection requires that input message id is always captured, even if handling logic execution results in no state changes - [ShootingRange](https://github.com/exactly-once/state-based-consistent-messaging/blob/master/StateBased.ConsistentMessaging/StateBased.ConsistentMessaging/Domain/ShootingRange.cs#L9) handler logic for `FireAt` message is a good example of such case.
 
-Versoning of the state doesn't surface to the busniess logic and is represented as POCO e.g.:
+Versioning of the state doesn't surface to the business logic and the state is represented as POCO e.g.:
 
 {{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 public class ShootingRangeData
@@ -123,7 +123,7 @@ public void Handle(IHandlerContext context, FireAt command)
 }
 {{< / highlight >}}
 
-That said, line 7 where `Hit` message id is generated deserves more discussion. We are not using a standard libarary call to generate new `Guid` version for a reason. As `Guid` generation logic is undeterministic from business logic perspective we can't use it without breaking the second [requirement](#context). We need to make sure that re-processing of a message results identical output messages (including their identifiers). Some kind of seed data is needed to enable that - in our example the input message id plays that role and gets passed to the context just before handler execution:
+That said, line 7 where `Hit` message id is generated deserves more discussion. We are not using a standard library call to generate a new `Guid` value for a reason. As `Guid` generation logic is nondeterministic from the business logic perspective we can't use it without breaking the second [requirement](#context). We need to make sure that the re-processing of a message results in identical output messages (including their identifiers). Some kind of seed data is needed to enable that - in our example, the input message id plays that role and gets passed to the context just before handler execution:
 
 {{< highlight c "linenos=inline,hl_lines=4,linenostart=1" >}}
 static List<Message> InvokeHandler<THandler, THandlerState>(...)
@@ -138,23 +138,23 @@ static List<Message> InvokeHandler<THandler, THandlerState>(...)
 }
 {{< / highlight >}}
 
-Guid generation scenario touches on a more general case. The same kind of problem exists when using random variables, time offsets or any other environmental variables that might change in between handler invocations. In order to handle these cases we would need to caputre additional invocation context in the event metadata (as show on the diagram) and expose utility methods on the `IHandlerContext` instance passed to the business logic.  
+`Guid` generation scenario touches on a more general case. The same kind of problem exists when using random variables, time offsets or any other environmental variables that might change in between handler invocations. To handle these cases we would need to capture additional invocation context in the event metadata (as shown on the diagram) and expose utility methods on the `IHandlerContext` instance passed to the business logic.  
 
-In summary, for the handler to be deterministic it need to operate over business state and/or additional context data that gets captured during message processing.
+In summary, for the handler to be deterministic it needs to operate over the business state and/or additional context data that gets captured during message processing.
 
 #### Mind the gap 
 
-The implementation of state-based consistent messaging has some gaps that require mentioning. First, in most real-world applications the state version storage reqruires clean-up. At some point the older versions are no longer needed e.g. after `n` number of days, and should be removed. This most likely requires some background clean-up process making sure this happens.
+The implementation of state-based consistent messaging has some gaps that require mentioning. First, in most real-world applications the state version storage requires clean-up. At some point, the older versions are no longer needed e.g. after `n` number of days and should be removed. This most likely requires some background clean-up process making sure this happens.
 
-Secondly, the approach sotring the state has been chosen for it's clarity. It is likely that in production scenarios this might require optimizations from the storage size perspective e.g. storing state deltas instead of the whole snapshots and removing deltas for versions that already had their messages published.
+Secondly, the approach to storing the state has been chosen for its clarity. In some production scenarios, this might require optimizations from the storage consumption perspective e.g. storing state deltas instead of the whole snapshots and removing deltas for versions that already had their messages published.
 
-Finally, the decission to hide state version from the business logic might not be necessary. In systems using [event sourcing](https://www.youtube.com/watch?v=8JKjvY4etTY&t=180s) for representing state the state-based approach might be integrated into persistence logic. 
+Finally, the decision to hide state history from the business logic might not be necessary. In systems using [event sourcing](https://www.youtube.com/watch?v=8JKjvY4etTY&t=180s) for deriving the state, the state-based approach might be integrated into persistence logic. 
 
-[Azure Durable Functions](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-overview?tabs=csharp) is one example of technology using similar approach and good case study of how some of the above problems could be solved.
+[Azure Durable Functions](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-overview?tabs=csharp) is one example of a technology using a similar approach and good case study of how some of the above problems could be solved.
 
 ### Pros and cons
 
-We already mentioned the requirements needed for the state-based approach to message consistency. It's time to clarify what are advantages and disadvantages of this approach.
+We already mentioned the requirements needed for the state-based approach to message consistency. It's time to clarify are the advantages and disadvantages of this approach.
 
 Advantages:
 
@@ -164,11 +164,13 @@ Advantages:
 
 Disadvantages:
 
-* Ensuring deterministic logic requires attention - making sure logic is deterministic might be error prone.
+* Ensuring deterministic logic requires attention - making sure logic is deterministic might be error-prone.
 * Managing business logic changes - changing business logic needs to be able to cope with historical versions of the state.
-* Stream size is proportional to number of messages processed - even if messages do not generate state changes.
+* Stream size is proportional to the number of messages processed - even if messages do not generate state changes.
 
 
 ### Summary
 
-This covers the state-based approach to consistent messages and side-effects based is the next one we will look closer at. Have any questions? Make sure to ping us on Twitter! 
+This post covers the state-based approach to consistent messages. Side-effects based is the one we will have a closer look next. 
+
+Have any questions? Make sure to ping us on Twitter! 
