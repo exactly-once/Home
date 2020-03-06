@@ -1,4 +1,10 @@
-# Outbox
+---
+layout: post
+title: Outbox
+date: 2020-03-06
+author: Tomek Masternak, Szymon Pobiega
+draft: false
+---
 
 In the previous post we have shown how consistent messaging can be implemented by storing point-in-time state snapshots and using these snapshots for publishing outgoing messages. We discussed some pros and cons of this approach. This time we will focus on the alternative approach which is based on storing the outgoing messages before they are dispatched.
 
@@ -6,9 +12,9 @@ Consistent messaging requires the ability to ensure exactly same side effects (i
 
 The following code ensures the consistency of the message processing done by our business object.
 
-```
-var entity = await persister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
-                    ?? new Entity { Id = correlationId };
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
+var entity = await persister.LoadByCorrelationId(correlationId)
+                   ?? new Entity { Id = correlationId };
 
 TransportOperation[] outgoingMessages;
 if (!entity.OutboxState.ContainsKey(messageId))
@@ -16,9 +22,10 @@ if (!entity.OutboxState.ContainsKey(messageId))
     var state = (T)entity.BusinessState ?? new T();
 
     var (newState, pendingTransportOperations) =
-        await handlerCallback(state, context).ConfigureAwait(false);
+        await handlerCallback(state, context);
 
-    outgoingMessages = pendingTransportOperations.Operations.Serialize();
+    outgoingMessages = pendingTransportOperations.Operations
+                                                 .Serialize();
 
     entity.BusinessState = newState;
     entity.OutboxState[messageId] = new OutboxState
@@ -26,46 +33,49 @@ if (!entity.OutboxState.ContainsKey(messageId))
         OutgoingMessages = outgoingMessages
     };
 
-    await persister.Persist(entity).ConfigureAwait(false);
+    await persister.Persist(entity);
 }
 else
 {
-    outgoingMessages = entity.OutboxState[messageId].OutgoingMessages;
+    outgoingMessages = entity.OutboxState[messageId]
+                             .OutgoingMessages;
 }
 
 if (outgoingMessages != null)
 {
     var toDispatch = outgoingMessages.Deserialize();
-    await Dispatch<T>(context, toDispatch).ConfigureAwait(false);
+    await Dispatch<T>(context, toDispatch);
 
     entity.OutboxState[messageId].OutgoingMessages = null;
 
-    await persister.Persist(entity).ConfigureAwait(false);
+    await persister.Persist(entity);
 }
-```
+{{< / highlight >}}
 
 That's a lot of code so to understand that better, let's examine it piece-by-piece. First, we need to load the state of our business component. 
 
-```
-var entity = await persister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
+var entity = await persister.LoadByCorrelationId(correlationId)
              ?? new Entity { Id = correlationId };
 
 TransportOperation[] outgoingMessages;
 if (!entity.OutboxState.ContainsKey(messageId))
 {
-```
+{{< / highlight >}}
 
 The actual stored record contains two parts. There is the business state but there is also message processing state -- `OutboxState`. That structure is a map that associates ID of an incoming message with a collection of outgoing messages that were produced during processing. When a message handler receives a message, it loads the state and inspects the _Outbox_ to check if it contains an entry for the ID of the incoming message. If there is no corresponding entry, it means that a given message has not been processed yet.
 
-```
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 var state = (T)entity.State ?? new T();
-var (newState, pendingTransportOperations) = await handlerCallback(state, context);
-```
+var (newState, pendingTransportOperations) = 
+                        await handlerCallback(state, context);
+{{< / highlight >}}
 
 In that case we invoke the business logic (`handlerCallback`) that returns a tuple containing a new value of the business state and a collection of `pendingTransportOperations` -- messages that were generated and are to be dispatched. Now we need to take both these pieces, stick them into the container and make sure they are stored durably in a *single atomic operation*.
 
-```
-outgoingMessages = pendingTransportOperations.Operations.Serialize();
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
+outgoingMessages = pendingTransportOperations.Operations
+                                             .Serialize();
 
 entity.BusinessState = newState;
 entity.OutboxState[messageId] = new OutboxState
@@ -74,26 +84,26 @@ entity.OutboxState[messageId] = new OutboxState
 };
 
 await persister.Persist(stateContainer);
-```
+{{< / highlight >}}
 
 Let's go back and look at the other branch of the `if` statement. What if the condition
 
-```
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 if (!entity.OutboxState.ContainsKey(messageId))
 {
-```
+{{< / highlight >}}
 
 is false. What if the _Outbox_ state already contains an entry for a given ID? That means we have already processed another copy of the incoming message. There are two possible reasons for this. The message may simply be a duplicate. Another possibility is that there had been only a single copy of the message but the first time we attempted to process it, we failed to dispatch the outgoing messages and the incoming message has been returned to the queue. 
 
-```
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 outgoingMessages = entity.OutboxState[messageId].OutgoingMessages;
-```
+{{< / highlight >}}
 
 What's next? We can not push the outgoing messages to the transport and we are done. If another copy of the message comes in, the business logic will not be invoked and the persisted outgoing messages will be dispatched again. That behavior is correct but is not optimal for two reasons. First, it means that each time an incoming message is duplicated, the outgoing messages will get duplicated too. These outgoing messages get to another endpoint and cause duplicates there, too. We are not using the bandwith responsibly. Second problem is the fact that these outgoing messages take up preceious space in our entity, making it slower and slower to load and store it.
 
 We can solve both problems by adding the optimization visible in the following snippet
 
-```
+{{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 if (outgoingMessages != null)
 {
     var toDispatch = outgoingMessages.Deserialize();
@@ -103,7 +113,8 @@ if (outgoingMessages != null)
 
     await persister.Persist(stateContainer);
 }
-```
+{{< / highlight >}}
+
 The idea is to mark the fact that we managed to dispatch the outgoing messages. The easiest way is to set the outgoing messages collection to `null`. 
 
 ## Summary
