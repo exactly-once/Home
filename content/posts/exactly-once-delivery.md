@@ -18,7 +18,11 @@ The concept of layer is very useful when describing software systems. Layers all
 
 ### Message queue
 
-The most basic way for two processes can communicate is to send sequences of bytes to each other directly. For the sake of clarity in this article we will use a different model in which processes send messages via a *message queue*. All we need to know about the *queue* is that it can durably store messages and allows retrieving messages in First-In, First-Out (FIFO) order.
+The most basic way for two processes can communicate is to send sequences of bytes to each other directly. For the sake of clarity in this article we will use a different model in which processes send messages via a *message queue*. All we need to know about the *queue* is that it can durably store messages and allows retrieving them in a non-destructive way.
+
+### Concurrency
+
+Most real-life message processing systems take advantage of concurrent processing. This means that, at any given point in time, more than one message might be undergoing processing. As a result, these systems are subject to consistency problems caused by overriding application state data. Such problems occur regardless how we chose to manage the de-duplication. Two well-known and documented strategies for dealing with them are optimistic and pessimistic concurrency control. In the rest of this post we will *assume* that appropriate concurrency control mechanisms are put in place.
 
 ### Transactions
 
@@ -28,6 +32,7 @@ In order to guarantee *exactly-once* processing we can use the transactions that
  - take a message off the queue
  - modify the application state
  - enqueue resulting messages
+ - remove the processed message from the input queue
 
 Transactions guarantee that included operations are atomic and durable. That means that either all three operations are completed or none is. Also, once a transaction is accepted by a system, the system guarantees it won't disappear in future. Transactions are implemented using a concept of a log -- an ordered sequence of operations stored on disk. When transaction is submitted, its description is first written to a log. Only after the log is made durable (e.g. by writing a checksum and ensuring that all write buffers are flushed) are the operations actually applied to the data.
 
@@ -39,9 +44,11 @@ So next time you see a system that uses e.g. [NServiceBus SQL Server transport](
 
 It is not always possible or desirable to use the same transactional storage to serve both as data store and message queue. Queues implemented in a relational database can never match the throughput of native queuing solutions. As a result we may be forced to use two different technologies. How do we ensure *exactly-once* message processing in this case?
 
-One option is to extend the concept of transaction. If transaction within one resource are useful, surely transactions that span multiple resources would be even more useful. At least that's what people thought in the early 80s when they came up with the concept of distributed transactions. Here we meet our two generals again. Remember? We mentioned that the two-generals problem shows that distributed consensus is not possible. Well, if it is not possible then how do people claim it works? It turns out the impossibility proof is based on the assumption of an asynchronous network in which messages may be delayed arbitrarily long. In such a network no consensus algorithm can guarantee progress. Fortunately real-world networks are not asynchronous. They are more like *semi-asynchronous networks* and that means that messages are delivered eventually. This seemingly weak guarantee is enough to allow a number of consensus algorithms to be proven reliable (e.g. Paxos and Raft).
+One option is to extend the concept of transaction. If transaction within one resource are useful, surely transactions that span multiple resources would be even more useful. At least that's what people thought in the early 80s when they came up with the concept of distributed transactions. Here we meet our two generals again. Remember? We mentioned that the two-generals problem shows that distributed consensus is not possible. Well, if it is not possible then how do people claim it works? It turns out the impossibility proof is based on the assumption of an asynchronous network in which messages may be delayed arbitrarily long. And even under these assumptions the impossibility means that there is no algorithm that can **always** guarantee progress in achieving consensus. Fortunately real-world networks are not asynchronous. They are more like *semi-asynchronous networks* and that means that messages are delivered eventually. This seemingly weak guarantee is enough to allow a number of consensus algorithms to be proven reliable (e.g. Paxos and Raft)[^1].
 
 So what is that consensus and how does it work? It can be defined in a number of ways but for our purposes it means that for each transaction two (or more) nodes of a system agree that is has been accepted or rejected. There are two widely known types of consensus algorithms. One type is represented by Paxos and Raft we mentioned before. These algorithms are used by distributed databases to ensure data consistency across nodes. The other type is represented by the infamous [Two-Phase Commit](https://exactly-once.github.io/posts/notes-on-2pc/) (sometimes referred to as 2PC). These algorithms are meant to coordinate transactions between different (usually heterogeneous) data stores. For the purpose of *exactly-once* delivery this second type is more relevant. We'll explain it using the implementation provided by Microsoft in form of Distributed Transactions Coordinator (DTC) service.
+
+Note that technically 2PC is different and harder than consensus. The latter does not allow any of the nodes to veto to the proposed outcome. [Paxos Commit](https://www.microsoft.com/en-us/research/publication/consensus-on-transaction-commit/) is an example of atomic commit protocol based on Paxos consensus algorithm.
 
 Both MSMQ (a queuing system built into Windows) and SQL Server support 2PC protocol implemented by the DTC. When the receiver takes the message off the queue, it does so in the context of a distributed transactions managed by the DTC. It uses the same transaction context to modify the state in the database and to send outgoing messages. The result is (almost) exactly the same as when using local transactions. There are some differences, though. The main one is related to visibility. While in local ACID transactions all changes are made visible at the same time, in distributed transactions each participant makes the changes visible independently. As a result, you may run into situation in which an outgoing message is sent and received before the change of state in the database is visible. This may be confusing for downstream message processors.
 
@@ -88,3 +95,5 @@ With so many options for implementing *exactly-once* message processing, which m
 The broker and distributed transactions approaches depend heavily on the support from big vendors. Today the distributed transactions are in decline but if some cloud vendor one day decides to support them in some limited form between their queue and storage offerings, it could be a game-changer. On the broker side the adoption of the AMQP protocol seems fairly high but so far no broker vendor supports durable link state.
 
 Our current favourite is the application protocol layer because it is fairly independent of big technology vendors. In this space we believe we can provide a working solution that is usable in wide range of scenarios without relying on specific database or messaging technologies.
+
+[^1]: [Transaction Management in the R* Distributed Database Management System](http://www.cs.cmu.edu/~natassa/courses/15-823/F02/papers/p378-mohan.pdf) – Mohan et al. 1986
