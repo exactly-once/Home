@@ -8,7 +8,7 @@ Based on that we can establish some derived terms. *At-most-once* message proces
 
 ### How
 
-Contrary to a popular opinion, **exactly-once message processing is possible** in real world. It is really unfortunate that the majority of the content on the Internet still uses the *delivery*, not *processing* model. It is even worse that most of that content claims *exactly-once delivery* is impossible due to the so-called [two-generals problem](https://en.wikipedia.org/wiki/Two_Generals%27_Problem). What that problem *really* illustrates is that *consensus* is impossible in the asynchronous network in which arbitrary message loss is possible. 
+Contrary to a popular opinion, **exactly-once message processing is possible** in the real world. It is really unfortunate that the majority of the content on the Internet focuses on *delivery* and not *processing* which far more significant in transactional systems. It is even worse than a significant part of that content claims *exactly-once delivery* is impossible as proven by the [two-generals problem](https://en.wikipedia.org/wiki/Two_Generals%27_Problem). A thought experiment demonstrating *consensus* impossibility in an asynchronous network. 
 
 So let us continue to ignore message *delivery* and focus on the problem at hand. How do we achieve exactly-once message processing in a real-life distributed system?
 
