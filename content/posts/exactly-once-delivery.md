@@ -71,16 +71,20 @@ Fortunately both out-of-entity storage of de-duplication data and deterministic 
 
 ### Application code
 
-Next layer up the stack, the *exactly-once* message processing can be implemented in the application code itself. 
+Next layer up the stack, the *exactly-once* message processing can be implemented in the application code itself, based on the knowledge of the semantics of messages. Consider services called Orders and Shipping. Orders publishes `OrderSubmitted`, `ItemAdded` and `OrderAccepted` events. All the solutions we have shown previously would treat these events the same, as plain messages. The code in the application layer can do better because it is aware of the business processes according to which an order is first submitted, then added to, and finally accepted. In addition to that, the receiver knows that each `ItemAdded` message contains the index of the item which uniquely identifies it within an order.
 
-TBD
+To ensure *exactly-once* processing a receiver should keep track of items in each order to discard duplicate `ItemAdded` events. It should also keep track of the order state to ensure that a late duplicate or `OrderSubmitted` does not move the order state back when it was already considered *accepted*.
 
 ### Message broker
 
-Finally the message broker itself. [Many message brokers claim](https://aws.amazon.com/about-aws/whats-new/2016/11/amazon-sqs-introduces-fifo-queues-with-exactly-once-processing-and-lower-prices-for-standard-queues/) to support *exactly-once* message processing to some degree. Unfortunately this is very confusing as the message broker is precisely the place where *exactly-once* message processing cannot be implemented. 
+Finally the message broker itself. [Many message brokers claim](https://aws.amazon.com/about-aws/whats-new/2016/11/amazon-sqs-introduces-fifo-queues-with-exactly-once-processing-and-lower-prices-for-standard-queues/) to support *exactly-once* message processing to some degree. Unfortunately this is very confusing because **the message broker is precisely the place where exactly-once message processing cannot be implemented**. 
 
 What we wanted to prove in this article is that *exactly-once* processing necessarily requires some form of participation from the message processing endpoint. This participation may be in form of using a shared data store, taking part in distributed transactions or implementing a protocol. So next time you see another messaging infrastructure vendor claiming you'll get *exactly-once* message processing magically if only you sign that contract, you know what to reply.
 
-### Future
+### So many options
 
-TBD
+With so many options for implementing *exactly-once* message processing, which method to use? The atomic transaction approach seems to work well only in systems that have that need low throughput. The application layer approach is great for high-throughput systems but does not scale well with system complexity. The bigger the system is, the harder it is to maintain the de-duplication logic based on specifics of each business process. 
+
+The broker and distributed transactions approaches depend heavily on the support from big vendors. Today the distributed transactions are in decline but if some cloud vendor one day decides to support them in some limited form between their queue and storage offerings, it could be a game-changer. On the broker side the adoption of the AMQP protocol seems fairly high but so far no broker vendor supports durable link state.
+
+Our current favourite is the application protocol layer because it is fairly independent of big technology vendors. In this space we believe we can provide a working solution that is usable in wide range of scenarios without relying on specific database or messaging technologies.
