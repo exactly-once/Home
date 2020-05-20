@@ -1,4 +1,10 @@
-# Exactly-once message delivery
+---
+layout: post
+title: Exactly-once message delivery
+date: 2020-05-20
+author: Szymon Pobiega
+draft: false
+---
 
 It is widely known that exactly-once message delivery is impossible in a distributed system. But what is exactly-once delivery? To answer this question we need to first ask what do we understand as *message delivery*. This is not an easy task. In real life the receiving system is not a single blob of code. It consists of multiple layers. Is the message considered delivered when all its bytes are read from the network cable? If not, then maybe when the message is passed to the application? Or maybe when the application completes the procedure that acted on the data? Finally, maybe we should consider a message delivered when the TCP connection is was received on is closed?
 
