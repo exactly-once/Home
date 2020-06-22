@@ -32,6 +32,57 @@ Finally, a note of caution. To create a useful model one needs a thorough unders
 
 ### Modelling exactly-once
 
+We are not going to look at the specification line-by-line - the source code is [available](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) on GitHub and we encourage all the readers to have a look. Secondly, we are not going to use TLA+ directly but PlusCal instead. PlusCal get's transpiled to TLA+ and among others traits, has a syntax similar to many main-stream languages making it easer to understand - especially for the newcomers.
+
+We will start with scafolding main parts of our system ie. modelling input and output queues, business data storage, and message handler.  
+
+{{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
+CONSTANTS MessageCount, DupCount, NULL
+
+IsEmpty(T) == Cardinality(T) = 0
+
+Processes == 1..2
+MessageIds == 1..MessageCount
+DupIds == 1..DupCount
+
+(*--algorithm exactly-once
+variables
+    inputQueue = [id : MessageIds, dupId : DupIds],
+    store = [history |-> <<>>, ver |-> 0, tx |-> NULL], 
+    output = { },
+define 
+    Termination == 
+        <>(/\ \A self \in Processes: pc[self] = "LockInMsg"
+           /\ IsEmpty(inputQueue))
+end define;
+
+fair process HandlerThread \in Processes
+variables
+    msg,
+begin
+MainLoop:
+    while TRUE do
+    LockInMsg:
+        await ~ IsEmpty(inputQueue);
+        with m \in inputQueue do
+            inputQueue := { i \in inputQueue : i /= m};
+            msg := m;
+        end with;
+    Process:
+        (* More logic to be added *)
+    end while;
+end process;
+end algorithm; *)
+{{< / highlight >}}
+
+The model describes the state using set of variables. The `inputQueue`, `output` variables are used to model system queues and `store` models busniess data storage. Each hander defines `msg` variable that holds a message picked up from the input queue. The system starts off (line 50) with the input queue holding `MessageCount` number of messages, each one being duplicatd `DupCount` number of times. Both handles operate in a loop (line 63) removing one message at a time and processing it. Each loop execution consists of two steps `LockInMsg` and `Process`.
+
+As we can see the model already expresses some non-trivial non-determinisms resulting from number of processes and execution steps we defined. The specification doesn't define any rules about how the messages are to be processed. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
+
+There is one more important detail here ie. `Termination` property. As already mentioned we can use model checking to verify that certain conditions are true for all executions of the system. The `Termination` property states that eventually (`<>` operator) any execution lead to a state in which the `inputQueue` is empty and all processes are awaiting at line 65. In other words, the property checks that the input queue is always eventually drained.
+
+
+
 What is an endpoint? 
 How to model concurrent receivers, message leases and processing failures? 
 What are the assumptions that we make about consistency models of storage engines?
