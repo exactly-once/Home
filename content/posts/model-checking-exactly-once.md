@@ -34,7 +34,14 @@ Finally, a note of caution. To create a useful model one needs a thorough unders
 
 We are not going to look at the specification line-by-line - the source code is [available](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) on GitHub and we encourage all the readers to have a look. Secondly, we are not going to use TLA+ directly but PlusCal instead. PlusCal get's transpiled to TLA+ and among others traits, has a syntax similar to many main-stream languages making it easer to understand - especially for the newcomers.
 
-We will start with scafolding main parts of our system ie. modelling input and output queues, business data storage, and message handler.  
+The specification models a generic system with the following assumptions:
+
+* Business data store supports optimistic concurrency control
+* There are no transactions between outbox storage and business data store
+* Message can be concurrently processed by multiple handlers
+* Messages are duplicated 
+
+We will start with the scafold for the specification ie. modelling input and output queues, business data storage, and message handlers.  
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 CONSTANTS MessageCount, DupCount, NULL
@@ -44,72 +51,133 @@ IsEmpty(T) == Cardinality(T) = 0
 Processes == 1..2
 MessageIds == 1..MessageCount
 DupIds == 1..DupCount
+VersionIds == 0..2*MessageCount
+TxIdx == 1..MessageCount*DupCount
 
 (*--algorithm exactly-once
 variables
     inputQueue = [id : MessageIds, dupId : DupIds],
     store = [history |-> <<>>, ver |-> 0, tx |-> NULL], 
+    outbox = [r \in MessageIds |-> NULL],
+    outboxStagging = [t \in TxIdx |-> NULL],
     output = { },
-define 
-    Termination == 
-        <>(/\ \A self \in Processes: pc[self] = "LockInMsg"
-           /\ IsEmpty(inputQueue))
-end define;
-
+    processed = { }
+(...)
 fair process HandlerThread \in Processes
 variables
+    txId,
     msg,
+    state, 
+    nextState
 begin
 MainLoop:
     while TRUE do
     LockInMsg:
         await ~ IsEmpty(inputQueue);
-        with m \in inputQueue do
-            inputQueue := { i \in inputQueue : i /= m};
-            msg := m;
-        end with;
-    Process:
-        (* More logic to be added *)
+        (...)
     end while;
 end process;
 end algorithm; *)
 {{< / highlight >}}
 
-The model describes the state using set of variables. The `inputQueue`, `output` variables are used to model system queues and `store` models busniess data storage. Each hander defines `msg` variable that holds a message picked up from the input queue. The system starts off (line 50) with the input queue holding `MessageCount` number of messages, each one being duplicatd `DupCount` number of times. Both handles operate in a loop (line 63) removing one message at a time and processing it. Each loop execution consists of two steps `LockInMsg` and `Process`.
+The model describes the state using set of variables (lines 13-18). Input and output queues are represented as set of records with unique `id`. The business data storage (line 14) consists of a sequence of snapshots and contains `ver` field used to model optimistic concurrency control on writes. Finally, there are two variables modelling the outbox store.
 
-As we can see the model already expresses some non-trivial non-determinisms resulting from number of processes and execution steps we defined. The specification doesn't define any rules about how the messages are to be processed. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
+The system starts with all storages empty except the input queue which contains `MessageCount*DupCount` messages. Every handler operates in a loop (line 27) processing one message at a time.  
 
-There is one more important detail here ie. `Termination` property. As already mentioned we can use model checking to verify that certain conditions are true for all executions of the system. The `Termination` property states that eventually (`<>` operator) any execution lead to a state in which the `inputQueue` is empty and all processes are awaiting at line 65. In other words, the property checks that the input queue is always eventually drained.
+As we can see the model already expresses some non-trivial non-determinisms resulting from number of processes and execution steps defined. The specification doesn't define any rules about how the messages are to be processed. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
 
+#### Termination
 
+To check termination ie. making sure that the system always drains the input queue, the following property has been defined:
 
-What is an endpoint? 
-How to model concurrent receivers, message leases and processing failures? 
-What are the assumptions that we make about consistency models of storage engines?
-What is the formal expression of `exactly-once` property?
+{{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
+Termination == <>(/\ \A self \in Processes: pc[self] = "LockInMsg"
+                  /\ IsEmpty(inputQueue))
+{{< / highlight >}}
 
-### Some non-trivialities
+As already mentioned we can use model checking to verify that the property is true for all executions of the system. The definition states that eventually (`<>` operator) any execution leads to a state in which the `inputQueue` is empty and all processes are in `LockInMsg` label.
 
-TransactionId as messageId instead of random guid
+#### Message processing
 
+Now let's look at message processing logic:
 
+{{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
+if outbox[msg.id] = NULL then
+   txId := (msg.id-1)*DupCount + msg.dupId;
+   state.history := <<[msgId |-> msg.id, ver |-> state.ver + 1]>> 
+                     \o 
+                     state.history ||
+   state.tx := txId ||
+   state.ver := state.ver + 1;
+StageOutbox:
+   outboxStagging[txId] := [msgId |-> msg.id, ver |-> state.ver];
+StateCommit:
+   CommitState(state);
+    
+OutboxCommit:
+   CommitOutbox(txId);
+StateCleanup:
+   CleanupState(state);
+end if;
+{{< / highlight >}}
 
+First, we check if the `outbox` contains a record for the input message. If not we generate an id unique to this processing and execute the business logic (update history log of the state and bump the expected version number). Next, we stage the outbox records and commit the state. 
 
+At this point the message processing is committed. The side effects won't be fully visible until we exectue `CommitOutbox` and `CleanupState`. 
 
+#### Failures
 
+Let's look into one of the `CommitState` macro:
 
+{{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
+macro CommitState(state) begin
+    if store.ver + 1 = state.ver then
+        either
+            store := state;
+        or
+            Rollback();
+        end either;
+    else
+        Rollback();
+    end if;
+end macro;
+{{< / highlight >}}
 
+As we can see it does the concurrency control check on the busniess store. What is more interesting is models process failures as well. When the version number maches the state is either committed (line 4) or we fail (line 6). The `either-or` statement expresses that at this stage in either one of these is possible.
 
-Be sure our intiution is correct, 
-Don't start with the model - you need to know your system quite deply to create a useful abstraction
-Check safety and liveness separatelly
-Who developed TLA+
-Other TLA+ resources
-5 min intro to TLA+ 
-How to express conditions we need (link to definition of exaclty-once from previous posts)
-How big was the model
-Example of a bug in TLA+ specification and analysis the trace
-Is this a proof - no, there are other things we might have missed, but it's a pretty solid baseline
+#### Checking safety
+
+Now that we went through state, concurrency and failures modelling let's see what is the safety property that we defined:
+
+{{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
+AtMostOneStateChange ==
+ \A id \in MessageIds : 
+    Cardinality(WithId(Range(store.history),id)) <= 1
+    
+AtMostOneOutputMsg ==
+ \A id \in MessageIds : 
+    Cardinality(WithId(output, id)) <= 1
+
+ConsistentStateAndOutput ==
+ LET InState(id)  == 
+        CHOOSE x \in WithId(Range(store.history), id) : TRUE
+     InOutput(id) == 
+        CHOOSE x \in WithId(output, id) : TRUE
+ IN \A m \in processed: 
+     InState(m.id).ver = InOutput(m.id).ver
+    
+Safety == /\ AtMostOneStateChange 
+          /\ AtMostOneOutputMsg 
+          /\ ConsistentStateAndOutput
+{{< / highlight >}}
+
+It consists of three parts. `AtMostOneStateChange` states that for any unique message id in the input queue there can be only one state change committed associated with that messages. Similarlity, `AtMostOneOutputMsg` states that there can be only one output message for any unique input messages. Finally, `ConsistentStateAndOutput` makes sure that for any message that got fully processed the output message has been generated for the business state version that got committed. 
+
+### Summary
+
+There are many non-trivial bits of the specification that we did not discuss here. E.g. what are exact failure scenarios considered, why having message duplicates is enough to model processing retires, what was the size of the model used for model checking, what are the non-trivial details needed to make the algorithm safe ... and many more. 
+
+If there is any specific part that intrests you, don't hesitate and reach out on Twitter!
 
 [^1]: There's more that comes with the toolkit eg. IDE and TLAPS - a theorem prover developed by Microsoft Research and INRIA Joint Centre 
 [^2]: [TLA+ Video Course](https://lamport.azurewebsites.net/video/videos.html) and [Specifying Systems](https://lamport.azurewebsites.net/tla/book.html) by Leaslie Lamport. [Learn TLA+ tutorial](https://learntla.com/) and [Practical TLA+](https://www.hillelwayne.com/post/practical-tla/) by [Hillel Wayne](https://www.hillelwayne.com/). TODO: add Murat Demirbas and Marc Brooker links
