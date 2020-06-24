@@ -20,28 +20,34 @@ In this post, we are not going to introduce you to TLA+ but rather provide some 
 
 TLA+ is a specification language for describing digital systems. A model of a system expressed in TLA+ consists of two elements: an initial state, and a transition function. The function takes a state as an input and returns a set of possible next states. The fact that there might be several possible next states enables expressing nondeterministic behaviors. 
 
-Applying the transition function on the initial and the following states generates all possible system executions - sequences of state transitions the system can take. Such a model is a directed graph where nodes are states and there is an edge from state A to state B if B belongs to the next states set of A. Any possible execution of the system is some path in that graph. Validating the model is checking that some properties are true for all paths in the graph.               
+Applying the transition function on the initial and the following states generates all possible system executions - sequences of state transitions the system can take. Such a model is a directed graph where nodes are states and there is an edge from state A to state B if B belongs to the next states set of A. Any possible execution of the system is some path in that graph. Validating the model is checking that some properties are true for all the paths.               
 
 {{< figure src="/posts/model-checking-state-space-example.png" title="CAN bus protocol model visualization." attr="https://www3.hhu.de/stups/prob/index.php/File:CANBus_sfdp.png">}}
 
-The first step in using TLA+ is to create a model of the system. By definition a model is a simplification, in our concrete case, it's a reduction necessary to make the verification feasible. We need to express only the essential subset of our system, otherwise, the state space size (number of unique system states) will be too big for the checker to handle. As with any modeling activity figuring out what are the important parts is the tricky bit. 
+The first step in using TLA+ is to create a model of the system. By definition a model is a simplification, in our concrete case, a reduction necessary to make the verification feasible. We need to express only the essential parts of our system, otherwise, the state space size (number of unique system states) will be too big for the checker to handle. As with any modeling activity figuring out what are the important parts is the tricky bit. 
 
-We already touched on the subject in the introduction saying that distributed systems are mainly about concurrency and partial failures. Our goal is to verify that the system behaves as expected in the face of this reality. As a result, nondeterminism caused by the concurrency and possible partial failures are the key elements that should make it to the model.
+We already touched on the subject in the introduction saying that distributed systems are mainly about concurrency and partial failures. Our goal is to verify that the system behaves as expected in the face of this reality. As a result, nondeterminism caused by the concurrency and possible failures are the key elements that should make it to the model.
 
-Finally, a note of caution. To create a useful model one needs a thorough understanding of the system. It requires a good understanding of communication middleware, store systems, libraries, etc. to properly express their concurrency and failure characteristics. It might be tempting to start with the model but based on our experience we wouldn't recommend this route[^3].
+Finally, a note of caution. To create a useful model one needs a thorough understanding of the system. It requires a good understanding of the communication middleware, storage systems, libraries, etc. to properly express their concurrency and failure characteristics. It might be tempting to start with the model but based on our experience we wouldn't recommend this route[^3].
 
 ### Modelling exactly-once
 
-We are not going to look at the specification line-by-line - the source code is [available](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) on GitHub and we encourage all the readers to have a look. Secondly, we are not going to use TLA+ directly but PlusCal instead. PlusCal get's transpiled to TLA+ and among others traits, has a syntax similar to many main-stream languages making it easer to understand - especially for the newcomers.
+We are not going to look at the specification line-by-line - we encourage all the readers to have a look at the [srouce code](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) for the complete picture. We used PlusCal to create the model - a Pascal like language that get's transpiled to TLA+ by the toolbox. We think PlusCal  makes it easer to understand the logic of the algorithm - especially for the newcomers.
 
-The specification models a generic system with the following assumptions:
+[The specification](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) models a system with the following attributes:
 
-* Business data store supports optimistic concurrency control
-* There are no transactions between outbox storage and business data store
-* Message can be concurrently processed by multiple handlers
-* Messages are duplicated 
+* Business data store supports optimistic concurrency control on writes
+* There are no atomic writes between outbox storage and business data store
+* Message are picked from the queue and processed concurrently by the handlers
+* Logical messages are duplicated 
 
-We will start with the scafold for the specification ie. modelling input and output queues, business data storage, and message handlers.  
+The main goal of the specification is to enable model checking that the system behaves in the exactly-once way:
+
+> (...) we want an endpoint to produce observable side-effects equivalent to some execution in which each logical message gets processed exactly-once. Equivalent meaning that it’s indistinguishable from the perspective of any other endpoint.[^4] 
+
+#### Scafolding
+
+We will start with the scafold for the specification, modelling input and output queues, business data storage, and message handlers.  
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 CONSTANTS MessageCount, DupCount, NULL
@@ -80,22 +86,22 @@ end process;
 end algorithm; *)
 {{< / highlight >}}
 
-The model describes the state using set of variables (lines 13-18). Input and output queues are represented as set of records with unique `id`. The business data storage (line 14) consists of a sequence of snapshots and contains `ver` field used to model optimistic concurrency control on writes. Finally, there are two variables modelling the outbox store.
+The model describes the state using set of variables (lines 13-18). Input and output queues are modelled as sets (no applied ordering) with each message having a unique `id` and `dupId` unique for each duplicate. The business data storage (line 14) is a record that hold sequence of snapshots (all versions of the state including the newest), `ver` field used to model optimistic concurrency on writes and `tx` field needed by the algorithm to commit message processing transactions. Finally, there are two variables modelling the outbox store. 
 
-The system starts with all storages empty except the input queue which contains `MessageCount*DupCount` messages. Every handler operates in a loop (line 27) processing one message at a time.  
+The system starts with all an empty state except the input queue which contains `MessageCount*DupCount` messages. There are two handler (this is controlled by the `Processes` sequence) that operate in a loop (line 27) processing one message at a time.  
 
-As we can see the model already expresses some non-trivial non-determinisms resulting from number of processes and execution steps defined. The specification doesn't define any rules about how the messages are to be processed. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
+The specification already expresses some non-determinisms as there is not coordination between the handlers. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
 
 #### Termination
 
-To check termination ie. making sure that the system always drains the input queue, the following property has been defined:
+Before checking any other poperties it's good to make sure that the system doesn't get stuck in any of the executions. In our case, this will mean that there are no more messages in the input queue and both handler are waiting in `LockInMsg`. This can be expressed in TLA+ with:
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 Termination == <>(/\ \A self \in Processes: pc[self] = "LockInMsg"
                   /\ IsEmpty(inputQueue))
 {{< / highlight >}}
 
-As already mentioned we can use model checking to verify that the property is true for all executions of the system. The definition states that eventually (`<>` operator) any execution leads to a state in which the `inputQueue` is empty and all processes are in `LockInMsg` label.
+The property states that eventually (`<>` operator) any execution leads to a state in which the `inputQueue` is empty and all processes are in `LockInMsg` label.
 
 #### Message processing
 
@@ -175,10 +181,11 @@ It consists of three parts. `AtMostOneStateChange` states that for any unique me
 
 ### Summary
 
-There are many non-trivial bits of the specification that we did not discuss here. E.g. what are exact failure scenarios considered, why having message duplicates is enough to model processing retires, what was the size of the model used for model checking, what are the non-trivial details needed to make the algorithm safe ... and many more. 
+There are many non-trivial bits of the specification that we did not discuss here. E.g. what are exact failure scenarios considered, why having message duplicates is enough to model processing retires, what was the size of the model used for model checking, what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
 
 If there is any specific part that intrests you, don't hesitate and reach out on Twitter!
 
 [^1]: There's more that comes with the toolkit eg. IDE and TLAPS - a theorem prover developed by Microsoft Research and INRIA Joint Centre 
 [^2]: [TLA+ Video Course](https://lamport.azurewebsites.net/video/videos.html) and [Specifying Systems](https://lamport.azurewebsites.net/tla/book.html) by Leaslie Lamport. [Learn TLA+ tutorial](https://learntla.com/) and [Practical TLA+](https://www.hillelwayne.com/post/practical-tla/) by [Hillel Wayne](https://www.hillelwayne.com/). TODO: add Murat Demirbas and Marc Brooker links
 [^3]: Please note that we are talking about validating production systems rather than distributed algorithms.  
+[^4]: See [the consistent messaging](/posts/consistent-messaging/) for more details 
