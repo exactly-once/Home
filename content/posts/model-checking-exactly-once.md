@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Model checking exaclty-once 
+title: Model checking exactly-once 
 date: 2020-06-18
 author: Tomek Masternak, Szymon Pobiega
 draft: false
@@ -41,9 +41,7 @@ We are not going to look at the specification line-by-line - we encourage all th
 * Message are picked from the queue and processed concurrently by the handlers
 * Logical messages are duplicated 
 
-The main goal of the specification is to enable model checking that the system behaves in the exactly-once way:
-
-> (...) we want an endpoint to produce observable side-effects equivalent to some execution in which each logical message gets processed exactly-once. Equivalent meaning that it’s indistinguishable from the perspective of any other endpoint.[^4] 
+The main goal of the specification is to enable model checking that the system behaves in the exactly-once way.
 
 #### Scafolding
 
@@ -110,16 +108,13 @@ Now let's look at message processing logic:
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 if outbox[msg.id] = NULL then
    txId := (msg.id-1)*DupCount + msg.dupId;
-   state.history := <<[msgId |-> msg.id, ver |-> state.ver + 1]>> 
-                     \o 
-                     state.history ||
    state.tx := txId ||
+   state.history := <<[msgId |-> msg.id, ver |-> state.ver + 1]>> \o state.history ||
    state.ver := state.ver + 1;
 StageOutbox:
    outboxStagging[txId] := [msgId |-> msg.id, ver |-> state.ver];
 StateCommit:
    CommitState(state);
-    
 OutboxCommit:
    CommitOutbox(txId);
 StateCleanup:
@@ -127,13 +122,13 @@ StateCleanup:
 end if;
 {{< / highlight >}}
 
-First, we check if the `outbox` contains a record for the input message. If not we generate an id unique to this processing and execute the business logic (update history log of the state and bump the expected version number). Next, we stage the outbox records and commit the state. 
+First, we check if the `outbox` contains a record for the current message. If there is not track of the message we generate a unique `txId` for this physical messages (line 2) and execute the business logic. The business logic execution is modelled by capturing `msgId` and `state.ver` in the snapshot history. Please not that these operations are modelling in-memory hander state changes - `state` is a variable defined locally. 
 
-At this point the message processing is committed. The side effects won't be fully visible until we exectue `CommitOutbox` and `CleanupState`. 
+Next, we stage the outbox records, commit the state and apply the side effects. All this modelled as 4 separate steps using `StageOutbox`, `StateCommit`, `OutboxCommit`, and `CleanupState` labels. Separate steps model concurrency but more interestingly, together with failures model the lack of atomic writes between outbox and business data stores.    
 
 #### Failures
 
-Let's look into one of the `CommitState` macro:
+Failures are the crux of the model and there are many that can happen in the system. We already made sure that the model expresses the atomicity guarantees of the storages engines. Now we need to make sure that write failures are properly represented. This has been done inside dedicated macros - one for each storage operation. Let's look into one of them:
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 macro CommitState(state) begin
@@ -141,19 +136,32 @@ macro CommitState(state) begin
         either
             store := state;
         or
-            Rollback();
+            Fail();
         end either;
     else
-        Rollback();
+        Fail();
     end if;
 end macro;
 {{< / highlight >}}
 
-As we can see it does the concurrency control check on the busniess store. What is more interesting is models process failures as well. When the version number maches the state is either committed (line 4) or we fail (line 6). The `either-or` statement expresses that at this stage in either one of these is possible.
+As we can see we start off with modelling the concurrency control check on the busniess store. What is more interesting though, we use `either-or` construct to specify that the write can either succeed or fail (for whatever reason). This causes model checker to create a "fork" in the execution history. One follwoing the happy path and the other representing write failure. The `Fail` macro brings the handler back to the beginning of the loop - as if an exception has been thrown and caught at the top most level.
+
+The other class of failures are these which happen at the boundary between queues and the handlers. There actually quite a bit of bad things that can happen in the system:
+* The message lease can expire and the message can be processed concurrently - either by a different thread or different process
+* There can be communication failure between the queue and the handler resulting in message being processed more than once 
+* There can be duplicates of a logical message generated on the sending end
+* Handler can fail before ack'ing the message that will cause message reprocessing
+* Message processing can fail multiple times resulting in message moving to the poison queue
+
+Fortunatelly, from the handler perspective all the above can be modelled with a single failure mode ie. logical message being received more than once. This has been modelled with the `dupId` field on the input message that we already talked about.
 
 #### Checking safety
 
-Now that we went through state, concurrency and failures modelling let's see what is the safety property that we defined:
+With all the pieces in place, we are ready to talk about safety properites we want to check. This is how we defined exactly-once property in [the consistent messaging post](/posts/consistent-messaging/):
+
+> (...) we want an endpoint to produce observable side-effects equivalent to some execution in which each logical message gets processed exactly-once. Equivalent meaning that it’s indistinguishable from the perspective of any other endpoint. 
+
+Similarily to termination we can express that as TLA+ property:
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 AtMostOneStateChange ==
@@ -177,15 +185,18 @@ Safety == /\ AtMostOneStateChange
           /\ ConsistentStateAndOutput
 {{< / highlight >}}
 
-It consists of three parts. `AtMostOneStateChange` states that for any unique message id in the input queue there can be only one state change committed associated with that messages. Similarlity, `AtMostOneOutputMsg` states that there can be only one output message for any unique input messages. Finally, `ConsistentStateAndOutput` makes sure that for any message that got fully processed the output message has been generated for the business state version that got committed. 
+This time the property is a bit more complicated - it consists of three parts that all need to be true (`/\` is notation for logical `and`)
+
+* `AtMostOneStateChange` states that for any message `id` in the input queue there can be at most one one state change committed associated with that messages
+* `AtMostOneOutputMsg` states that there can at most one output message for any unique input messages
+* `ConsistentStateAndOutput` states that for any fully processed input message (message that ended-up in the `processed` set) the output message has been generated based on the business state version that got committed 
 
 ### Summary
 
-There are many non-trivial bits of the specification that we did not discuss here. E.g. what are exact failure scenarios considered, why having message duplicates is enough to model processing retires, what was the size of the model used for model checking, what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
+There are other non-trivial bits of the specification that we did not discuss here. E.g. what was the size of the model used for model checking, what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
 
 If there is any specific part that intrests you, don't hesitate and reach out on Twitter!
 
 [^1]: There's more that comes with the toolkit eg. IDE and TLAPS - a theorem prover developed by Microsoft Research and INRIA Joint Centre 
 [^2]: [TLA+ Video Course](https://lamport.azurewebsites.net/video/videos.html) and [Specifying Systems](https://lamport.azurewebsites.net/tla/book.html) by Leaslie Lamport. [Learn TLA+ tutorial](https://learntla.com/) and [Practical TLA+](https://www.hillelwayne.com/post/practical-tla/) by [Hillel Wayne](https://www.hillelwayne.com/). TODO: add Murat Demirbas and Marc Brooker links
 [^3]: Please note that we are talking about validating production systems rather than distributed algorithms.  
-[^4]: See [the consistent messaging](/posts/consistent-messaging/) for more details 
