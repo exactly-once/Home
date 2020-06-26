@@ -18,9 +18,9 @@ In this post, we are not going to introduce you to TLA+ but rather provide some 
 
 ### Modelling systems with TLA+
 
-TLA+ is a specification language for describing digital systems. A model of a system expressed in TLA+ consists of two elements: an initial state, and a transition function. The function takes a state as an input and returns a set of possible next states. The fact that there might be several possible next states enables expressing nondeterministic behaviors. 
+TLA+ is a specification language for describing digital systems. A model of a system expressed in TLA+ consists of two elements: an initial state, and a next-state relation. The relation links a state to a set of possible next states. The fact that there might be several possible next states enables expressing nondeterministic behaviors. 
 
-Applying the transition function on the initial and the following states generates all possible system executions - sequences of state transitions the system can take. Such a model is a directed graph where nodes are states and there is an edge from state A to state B if B belongs to the next states set of A. Any possible execution of the system is some path in that graph. Validating the model is checking that some properties are true for all the paths.               
+Applying the next-state relation on the initial and the following states generates all possible system executions - sequences of state transitions the system can take. Such a model is a directed graph where nodes are states and there is an edge from state A to state B if B belongs to the next states set of A. Any possible execution of the system is some path in that graph. Validating the model is checking that some properties are true for all the paths.               
 
 {{< figure src="/posts/model-checking-state-space-example.png" title="CAN bus protocol model visualization." attr="https://www3.hhu.de/stups/prob/index.php/File:CANBus_sfdp.png">}}
 
@@ -193,7 +193,14 @@ This time the property is a bit more complicated - it consists of three parts th
 
 ### Summary
 
-There are other non-trivial bits of the specification that we did not discuss here. E.g. what was the size of the model used for model checking, what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
+We hope that you gained some intuition about model checking and how valuable this technique can be. That said, it's worth stressing some points:
+
+* You need to have an in-depth knowledge about the system to build a useful model. Otherwise, it is very likely to miss some key attributes of the system.
+* Model checking doesn't prove anything. First, it's not a proof in the mathematical sense, secondly it's always a simplification not the system itself. 
+* Model sizes ie. numbers of states, used in practice are small. In our case this was 2 handler and 6 messages in the input queue. That said are is some empirical evidence that even small are good enough to find bugs.    
+* Model checking is yet another *testing* technique - arguably quite useful in context of Distributed Systems  
+
+There are other  bits of the specification that we did not discuss here. E.g. what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
 
 If there is any specific part that intrests you, don't hesitate and reach out on Twitter!
 
