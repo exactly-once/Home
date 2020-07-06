@@ -1,4 +1,9 @@
-# Exactly-once intuition
+---
+layout: post
+title: Exactly-once intuition
+date: 2020-07-06
+draft: false
+---
 
 Distributed algorithms are difficult. If you find yourself struggling to understand one of them, we assure you -- you are not alone. We have spent last couple of years researching ways to ensure exactly-once message processing in systems that exchange messages in an asynchronous and durable way (a.k.a. message queues) and you know what? We still struggle and make silly mistakes. The reason is that even a very simple distributed algorithm generates vast numbers of possible execution paths.
 
