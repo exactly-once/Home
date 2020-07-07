@@ -24,28 +24,28 @@ Applying the next-state relation on the initial and the following states generat
 
 {{< figure src="/posts/model-checking-state-space-example.png" title="CAN bus protocol model visualization." attr="https://www3.hhu.de/stups/prob/index.php/File:CANBus_sfdp.png">}}
 
-The first step in using TLA+ is to create a model of the system. By definition a model is a simplification, in our concrete case, a reduction necessary to make the verification feasible. We need to express only the essential parts of our system, otherwise, the state space size (number of unique system states) will be too big for the checker to handle. As with any modeling activity figuring out what are the important parts is the tricky bit. 
+The first step in using TLA+ is to create a model of the system. By definition, a model is a simplification, in our concrete case, a reduction necessary to make the verification feasible. We need to express only the essential parts of our system, otherwise, the state space size (number of unique system states) will be too big for the checker to handle. As with any modeling activity figuring out what are the important parts is the tricky bit. 
 
-We already touched on the subject in the introduction saying that distributed systems are mainly about concurrency and partial failures. Our goal is to verify that the system behaves as expected in the face of this reality. As a result, nondeterminism caused by the concurrency and possible failures are the key elements that should make it to the model.
+We already touched on the subject in the introduction saying that distributed systems are mainly about concurrency and partial failures. Our goal is to verify that the system behaves as expected in the face of this reality. As a result, nondeterminism caused by concurrency and possible failures are the key elements that should make it to the model.
 
 Finally, a note of caution. To create a useful model one needs a thorough understanding of the system. It requires a good understanding of the communication middleware, storage systems, libraries, etc. to properly express their concurrency and failure characteristics. It might be tempting to start with the model but based on our experience we wouldn't recommend this route[^3].
 
 ### Modelling exactly-once
 
-We are not going to look at the specification line-by-line - we encourage all the readers to have a look at the [srouce code](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) for the complete picture. We used PlusCal to create the model - a Pascal like language that get's transpiled to TLA+ by the toolbox. We think PlusCal  makes it easer to understand the logic of the algorithm - especially for the newcomers.
+We are not going to look at the specification line-by-line - we encourage all the readers to have a look at the [srouce code](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) for the complete picture. We used PlusCal to create the model - a Pascal-like language that gets transpiled to TLA+ by the toolbox. We think PlusCal makes it easier to understand the logic of the algorithm - especially for the newcomers.
 
 [The specification](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) models a system with the following attributes:
 
-* Business data store supports optimistic concurrency control on writes
-* There are no atomic writes between outbox storage and business data store
-* Message are picked from the queue and processed concurrently by the handlers
+* Business datastore supports optimistic concurrency control on writes
+* There are no atomic writes between outbox storage and business datastore
+* Message is picked from the queue and processed concurrently by the handlers
 * Logical messages are duplicated 
 
-The main goal of the specification is to enable model checking that the system behaves in the exactly-once way.
+The main goal of the specification is to enable model checking that the system behaves in an exactly-once way.
 
 #### Scafolding
 
-We will start with the scafold for the specification, modelling input and output queues, business data storage, and message handlers.  
+We will start with the scaffold for the specification, modeling input and output queues, business data storage, and message handlers.  
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 CONSTANTS MessageCount, DupCount, NULL
@@ -84,15 +84,15 @@ end process;
 end algorithm; *)
 {{< / highlight >}}
 
-The model describes the state using set of variables (lines 13-18). Input and output queues are modelled as sets (no applied ordering) with each message having a unique `id` and `dupId` unique for each duplicate. The business data storage (line 14) is a record that hold sequence of snapshots (all versions of the state including the newest), `ver` field used to model optimistic concurrency on writes and `tx` field needed by the algorithm to commit message processing transactions. Finally, there are two variables modelling the outbox store. 
+The model describes the state using a set of variables (lines 13-18). Input and output queues are modeled with sets (no ordering) with each message having a unique `id` and `dupId` unique for each duplicate. The business data storage (line 14) is a record that holds a sequence of snapshots (all versions of the state including the newest), `ver` field used to model optimistic concurrency on writes, and `tx` field needed by the algorithm to commit message processing transactions. Finally, there are two variables modeling the outbox store. 
 
-The system starts with all an empty state except the input queue which contains `MessageCount*DupCount` messages. There are two handler (this is controlled by the `Processes` sequence) that operate in a loop (line 27) processing one message at a time.  
+The system starts with all an empty state except the input queue which contains `MessageCount*DupCount` messages. There are two handlers (this is controlled by the `Processes` sequence) that operate in a loop (line 27) processing one message at a time.  
 
-The specification already expresses some non-determinisms as there is not coordination between the handlers. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
+The specification already expresses some non-determinisms as there is no coordination between the handlers. E.g. an execution in which the first handler processes all the messages as well as one in which it processes none of the messages both belong to the model.   
 
 #### Termination
 
-Before checking any other poperties it's good to make sure that the system doesn't get stuck in any of the executions. In our case, this will mean that there are no more messages in the input queue and both handler are waiting in `LockInMsg`. This can be expressed in TLA+ with:
+Before checking any other poperties it's good to make sure that the system doesn't get stuck in any of the executions. In our case, proper termination means that there are no more messages in the input queue and both handler are waiting in `LockInMsg`. This can be expressed in TLA+ with:
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 Termination == <>(/\ \A self \in Processes: pc[self] = "LockInMsg"
@@ -122,13 +122,13 @@ StateCleanup:
 end if;
 {{< / highlight >}}
 
-First, we check if the `outbox` contains a record for the current message. If there is not track of the message we generate a unique `txId` for this physical messages (line 2) and execute the business logic. The business logic execution is modelled by capturing `msgId` and `state.ver` in the snapshot history. Please not that these operations are modelling in-memory hander state changes - `state` is a variable defined locally. 
+First, we check if the `outbox` contains a record for the current message. If there is not track of the message we generate a unique `txId` for this concrete execution (line 2) and run the business logic. The business logic execution is modeled by capturing `msgId` and `state.ver` in snapshot history. Please note that these operations are modeling in-memory hander state changes - `state` is a variable defined locally. 
 
-Next, we stage the outbox records, commit the state and apply the side effects. All this modelled as 4 separate steps using `StageOutbox`, `StateCommit`, `OutboxCommit`, and `CleanupState` labels. Separate steps model concurrency but more interestingly, together with failures model the lack of atomic writes between outbox and business data stores.    
+Next, we stage the outbox records, commit the state, and apply the side effects. All this modelled as 4 separate steps using `StageOutbox`, `StateCommit`, `OutboxCommit`, and `CleanupState` labels. Separate steps model concurrency but more interestingly, together with failures model the lack of atomic writes between outbox and business data stores.    
 
 #### Failures
 
-Failures are the crux of the model and there are many that can happen in the system. We already made sure that the model expresses the atomicity guarantees of the storages engines. Now we need to make sure that write failures are properly represented. This has been done inside dedicated macros - one for each storage operation. Let's look into one of them:
+Failures are the crux of the model and there are many that can happen in the system. We already made sure that the model expresses the atomicity guarantees of the storage engines. Now we need to make sure that write failures are properly represented. This has been done inside dedicated macros - one for each storage operation. Let's look into one of them:
 
 {{< highlight prolog "linenos=inline,hl_lines=,linenostart=1" >}}
 macro CommitState(state) begin
@@ -144,20 +144,20 @@ macro CommitState(state) begin
 end macro;
 {{< / highlight >}}
 
-As we can see we start off with modelling the concurrency control check on the busniess store. What is more interesting though, we use `either-or` construct to specify that the write can either succeed or fail (for whatever reason). This causes model checker to create a "fork" in the execution history. One follwoing the happy path and the other representing write failure. The `Fail` macro brings the handler back to the beginning of the loop - as if an exception has been thrown and caught at the top most level.
+As we can see we start with modeling the concurrency control check on the business store. What is more interesting though, we use `either-or` construct to specify that a write operation can either succeed or fail (for whatever reason). This causes a model checker to create a "fork" in the execution history. One following the happy path and the other representing write failure. The `Fail` macro brings the handler back to the beginning of the loop - as if an exception has been thrown and caught at the topmost level.
 
-The other class of failures are these which happen at the boundary between queues and the handlers. There actually quite a bit of bad things that can happen in the system:
+The other classes of failures are these which happen at the boundary between queues and the handlers. There are quite a few bad things that can happen in there:
 * The message lease can expire and the message can be processed concurrently - either by a different thread or different process
-* There can be communication failure between the queue and the handler resulting in message being processed more than once 
+* There can be communication failure between the queue and the handler resulting in the message being processed more than once 
 * There can be duplicates of a logical message generated on the sending end
 * Handler can fail before ack'ing the message that will cause message reprocessing
 * Message processing can fail multiple times resulting in message moving to the poison queue
 
-Fortunatelly, from the handler perspective all the above can be modelled with a single failure mode ie. logical message being received more than once. This has been modelled with the `dupId` field on the input message that we already talked about.
+Fortunately, from the handler perspective, all the above can be modeled with a single failure mode ie. logical message being received more than once. This has been modeled with the `dupId` field on the input message that we already talked about.
 
 #### Checking safety
 
-With all the pieces in place, we are ready to talk about safety properites we want to check. This is how we defined exactly-once property in [the consistent messaging post](/posts/consistent-messaging/):
+With all the pieces in place, we are ready to talk about the safety properties we want to check. This is how we defined exactly-once property in [the consistent messaging post](/posts/consistent-messaging/):
 
 > (...) we want an endpoint to produce observable side-effects equivalent to some execution in which each logical message gets processed exactly-once. Equivalent meaning that it’s indistinguishable from the perspective of any other endpoint. 
 
@@ -185,25 +185,25 @@ Safety == /\ AtMostOneStateChange
           /\ ConsistentStateAndOutput
 {{< / highlight >}}
 
-This time the property is a bit more complicated - it consists of three parts that all need to be true (`/\` is notation for logical `and`)
+This time the property is a bit more complicated - it consists of three parts that all need to be true (`/\` is a notation for logical `and`)
 
-* `AtMostOneStateChange` states that for any message `id` in the input queue there can be at most one one state change committed associated with that messages
+* `AtMostOneStateChange` states that for any message `id` in the input queue there can be at most one state change committed associated with that messages
 * `AtMostOneOutputMsg` states that there can at most one output message for any unique input messages
-* `ConsistentStateAndOutput` states that for any fully processed input message (message that ended-up in the `processed` set) the output message has been generated based on the business state version that got committed 
+* `ConsistentStateAndOutput` states that for any fully processed input message (a message that ended-up in the `processed` set) the output message has been generated based on the business state version that got committed 
 
 ### Summary
 
 We hope that you gained some intuition about model checking and how valuable this technique can be. That said, it's worth stressing some points:
 
-* You need to have an in-depth knowledge about the system to build a useful model. Otherwise, it is very likely to miss some key attributes of the system.
-* Model checking doesn't prove anything. First, it's not a proof in the mathematical sense, secondly it's always a simplification not the system itself. 
-* Model sizes ie. numbers of states, used in practice are small. In our case this was 2 handler and 6 messages in the input queue. That said are is some empirical evidence that even small are good enough to find bugs.    
-* Model checking is yet another *testing* technique - arguably quite useful in context of Distributed Systems  
+* You need to have in-depth knowledge about the technology to build a useful model. Otherwise, you are very likely to miss some key attributes of the system.
+* Model checking doesn't prove anything. First, it's not proof in the mathematical sense, secondly, it's always a simplification, not the system itself. 
+* Model sizes ie. numbers of states, used in practice are small. In our case, this was 2 handlers and 6 messages in the input queue. That said are is some empirical evidence that even small are good enough to find bugs.    
+* Model checking is yet another *testing* technique - arguably quite useful in the context of Distributed Systems  
 
-There are other  bits of the specification that we did not discuss here. E.g. what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
+There are other bits of the specification that we did not discuss here. E.g. what are the non-trivial details needed to make the algorithm safe, how to make the model finite ... and many more. 
 
-If there is any specific part that intrests you, don't hesitate and reach out on Twitter!
+If there is any specific part that interests you, don't hesitate and reach out on Twitter!
 
 [^1]: There's more that comes with the toolkit eg. IDE and TLAPS - a theorem prover developed by Microsoft Research and INRIA Joint Centre 
-[^2]: [TLA+ Video Course](https://lamport.azurewebsites.net/video/videos.html) and [Specifying Systems](https://lamport.azurewebsites.net/tla/book.html) by Leaslie Lamport. [Learn TLA+ tutorial](https://learntla.com/) and [Practical TLA+](https://www.hillelwayne.com/post/practical-tla/) by [Hillel Wayne](https://www.hillelwayne.com/). TODO: add Murat Demirbas and Marc Brooker links
+[^2]: [TLA+ Video Course](https://lamport.azurewebsites.net/video/videos.html) and [Specifying Systems](https://lamport.azurewebsites.net/tla/book.html) by Leslie Lamport. [Learn TLA+ tutorial](https://learntla.com/) and [Practical TLA+](https://www.hillelwayne.com/post/practical-tla/) by [Hillel Wayne](https://www.hillelwayne.com/). [Murat Demirbas](http://muratbuffalo.blogspot.com/search/label/tla) and [Marc Brooker](https://brooker.co.za/blog/) also have some great content on the subject.
 [^3]: Please note that we are talking about validating production systems rather than distributed algorithms.  
