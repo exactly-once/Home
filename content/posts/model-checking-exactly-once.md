@@ -12,7 +12,7 @@ By definition, any non-trivial distributed system is concurrent and fails partia
 
 ### Welcome to TLA+
 
-If there's one person to know in Distributed Systems research it's [Mr. Leaslie Lamport](https://en.wikipedia.org/wiki/Leslie_Lamport). He's a father to many discoveries and inventions in this area, including formal verification techniques. Since 1999 he's been working on TLA+ - a specification language, and TLC - a checker for validating claims about models expressed in the language[^1].
+If there's one person to know in Distributed Systems research it's [Mr. Leslie Lamport](https://en.wikipedia.org/wiki/Leslie_Lamport). He's a father to many discoveries and inventions in this area, including formal verification techniques. Since 1999 he's been working on TLA+ - a specification language, and TLC - a checker for validating claims about models expressed in the language[^1].
 
 In this post, we are not going to introduce you to TLA+ but rather provide some intuition and context needed to understand how we used it to validate exactly-once algorithms. If you are new to the subject we encourage you to have a closer look. There are several resources available on-line[^2] that do an awesome job at teaching TLA+.
 
