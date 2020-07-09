@@ -18,7 +18,7 @@ In this post, we are not going to introduce you to TLA+ but rather provide some 
 
 ### Modelling systems with TLA+
 
-TLA+ is a specification language for describing digital systems. A model of a system expressed in TLA+ consists of two elements: an initial state, and a next-state relation. The relation links a state to a set of possible next states. The fact that there might be several possible next states enables expressing nondeterministic behaviors. 
+TLA+ is a specification language for describing digital systems. A model of a system expressed in TLA+ consists of two elements: an initial state, and a next-state relation. The relation links a state to a set of possible next states. The fact that there might be several possible next states enables expressing nondeterministic behaviors caused by concurrent processing and partial failures. 
 
 Applying the next-state relation on the initial and the following states generates all possible system executions - sequences of state transitions the system can take. Such a model is a directed graph where nodes are states and there is an edge from state A to state B if B belongs to the next states set of A. Any possible execution of the system is some path in that graph. Validating the model is checking that some properties are true for all the paths.               
 
