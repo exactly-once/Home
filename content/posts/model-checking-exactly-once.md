@@ -12,7 +12,7 @@ By definition, any non-trivial distributed system is concurrent and fails partia
 
 ### Welcome to TLA+
 
-If there's one person to know in Distributed Systems research it's [Mr. Leaslie Lamport](https://en.wikipedia.org/wiki/Leslie_Lamport). He's a father to many discoveries and inventions in this area, including formal verification techniques. Since 1999 he's been working on TLA+ - a specification language, and TLC - a checker for validating claims about models expressed in the language[^1].
+If there's one person to know in Distributed Systems research it's [Mr. Leslie Lamport](https://en.wikipedia.org/wiki/Leslie_Lamport). He's a father to many discoveries and inventions in this area, including formal verification techniques. Since 1999 he's been working on TLA+ - a specification language, and TLC - a checker for validating claims about models expressed in the language[^1].
 
 In this post, we are not going to introduce you to TLA+ but rather provide some intuition and context needed to understand how we used it to validate exactly-once algorithms. If you are new to the subject we encourage you to have a closer look. There are several resources available on-line[^2] that do an awesome job at teaching TLA+.
 
@@ -32,7 +32,7 @@ Finally, a note of caution. To create a useful model one needs a thorough unders
 
 ### Modelling exactly-once
 
-We are not going to look at the specification line-by-line - we encourage all the readers to have a look at the [srouce code](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) for the complete picture. We used PlusCal to create the model - a Pascal-like language that gets transpiled to TLA+ by the toolbox. We think PlusCal makes it easier to understand the logic of the algorithm - especially for the newcomers.
+We are not going to look at the specification line-by-line - we encourage all the readers to have a look at the [source code](https://github.com/exactly-once/model-checking/blob/15b007f5ce403f1e4f8bd0a52bf73abee9085570/exactly_once_none_atomic.tla) for the complete picture. We used PlusCal to create the model - a Pascal-like language that gets transpiled to TLA+ by the toolbox. We think PlusCal makes it easier to understand the logic of the algorithm - especially for the newcomers.
 
 [The specification](https://github.com/exactly-once/model-checking/blob/master/exactly_once_none_atomic.tla) models a system with the following attributes:
 
@@ -40,6 +40,7 @@ We are not going to look at the specification line-by-line - we encourage all th
 * There are no atomic writes between outbox storage and business datastore
 * Message is picked from the queue and processed concurrently by the handlers
 * Logical messages are duplicated 
+* We assume linearizabile consistency model for outbox and datastore[^4]
 
 The main goal of the specification is to enable model checking that the system behaves in an exactly-once way.
 
@@ -109,7 +110,9 @@ Now let's look at message processing logic:
 if outbox[msg.id] = NULL then
    txId := (msg.id-1)*DupCount + msg.dupId;
    state.tx := txId ||
-   state.history := <<[msgId |-> msg.id, ver |-> state.ver + 1]>> \o state.history ||
+   state.history := <<[msgId |-> msg.id, ver |-> state.ver + 1]>> 
+                    \o 
+                    state.history ||
    state.ver := state.ver + 1;
 StageOutbox:
    outboxStagging[txId] := [msgId |-> msg.id, ver |-> state.ver];
@@ -207,3 +210,4 @@ If there is any specific part that interests you, don't hesitate and reach out o
 [^1]: There's more that comes with the toolkit eg. IDE and TLAPS - a theorem prover developed by Microsoft Research and INRIA Joint Centre 
 [^2]: [TLA+ Video Course](https://lamport.azurewebsites.net/video/videos.html) and [Specifying Systems](https://lamport.azurewebsites.net/tla/book.html) by Leslie Lamport. [Learn TLA+ tutorial](https://learntla.com/) and [Practical TLA+](https://www.hillelwayne.com/post/practical-tla/) by [Hillel Wayne](https://www.hillelwayne.com/). [Murat Demirbas](http://muratbuffalo.blogspot.com/search/label/tla) and [Marc Brooker](https://brooker.co.za/blog/) also have some great content on the subject.
 [^3]: Please note that we are talking about validating production systems rather than distributed algorithms.  
+[^4]: See [Linearizability](https://jepsen.io/consistency/models/linearizable). 
