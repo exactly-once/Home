@@ -60,7 +60,7 @@ entity.OutboxState.Remove(messageId);
 await persister.Persist(entity);
 {{< / highlight >}}
 
-This code satisfies this requirement as we first add the deduplication information to an external store and then persist the new state of the entity. Now we need to take this new store into account in the deduplication check. Previously we only checked the collection inside the entity
+This code satisfies this requirement as we first add the deduplication information to an external store and then persist the new state of the entity. As a careful reader, at this point you might ask about the consitency models of these two operations. What we really want to achieve is to make sure that the deduplication store write not only happens but also **is visible** to all readers before we clean up the outbox stated. We will come back to this subtle detail later, when we get to implementation technologies. Now we need to take this new store into account in the deduplication check. Previously we only checked the collection inside the entity
 
 {{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 var entity = await persister.LoadByCorrelationId(correlationId)
