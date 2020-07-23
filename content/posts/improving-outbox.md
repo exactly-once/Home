@@ -4,7 +4,7 @@ In [one of the previous posts](https://exactly-once.github.io/posts/outbox/) we 
 
 You may remember that we discussed two main issues in with the Outbox pattern. If not, we'll remind you. The first issue is connected with the tight coupling between the deduplication information (the ID of the incoming message) and the processing outcome information (the outgoing messages). Because of it, is is not possible to implement the Outbox pattern over a storage that does not support multi-entity transactions and robust querying. In practice, this limits the applicability of the Outbox pattern to the relational databases.
 
-The second issue is the non-deterministic deduplication data eviction. The information about the processed messages is removed based on its age, based on the assumption that duplicates are more likely to be spaced closely on the time axis and that the likelihood of a duplicate message arriving goes down super-linearly with the time distance between the duplicate copies. In other words, the most prevalent strategy is to keep the deduplication data for a week and hope that it is enough. Well, we think we can do better.
+The second issue is the non-deterministic deduplication data eviction. The information about the processed messages is removed based on its age, following the assumption that duplicates are spaced closely on the time axis and that the likelihood of a duplicate arrival goes down super-linearly with the time elapsed from the first delivery. In other words, the most prevalent strategy is to keep the deduplication data for a week and hope that it is enough. Well, we think we can do better.
 
 ## Decoupling
 
@@ -52,7 +52,7 @@ if (outgoingMessages != null)
 
 The root cause of the issue can be easily seen in line 34 where we remove the content of the outgoing messages but we leave the ID of the incoming message. Why? Because we need it for the deduplication check done in line 5. 
 
-What can we do to remove the need for keeping all these message IDs around inside out entity state? Notice the requirement for correct deduplication is that we need to keep the IDs of all processed messages for the entire deduplication period without any interruptions but it does not state where these IDs are stored. As long as they are **in at least one location**, we can move them around at will. So how about this:
+What can we do to remove the need for keeping all these message IDs around as part of the entity state? Notice the requirement for correct deduplication is that we need to keep the IDs of all processed messages for the entire deduplication period without any interruptions but it does not state where these IDs are stored. As long as they are **in at least one location**, we can move them around at will. So how about this:
 
 {{< highlight c "linenos=inline,hl_lines=,linenostart=1" >}}
 await deduplicationStore.Add(messageId);
@@ -144,7 +144,7 @@ if (outgoingMessages != null)
 
 ## Deduplication store
 
-You might be now asking a question what would be a good deduplication store. Well, that of course depends on your environment. For a solution deployed on-premises, almost any decent database would be fine. In Azure Cosmos DB and Blob Storage are both good candidates, but with an important caveat. If you decide to use the Cosmos DB, make sure to select [strong consistency](https://docs.microsoft.com/en-us/azure/cosmos-db/consistency-levels). Otherwise the algorithm would not work as the deduplication checks would be executed against a stale version of the store. If you enjoyed our [previous post on model checking](https://exactly-once.github.io/posts/model-checking-exactly-once/), you might want to read about [TLA+ models of Cosmos DB consistency levels](https://github.com/Azure/azure-cosmos-tla).
+You might be now asking a question about what would be a good deduplication store. Well, that, of course, depends on your environment. For a solution deployed on-premises, almost any decent database would be fine. In Azure Cosmos DB and Blob Storage are both good candidates, but with an important caveat. If you decide to use the Cosmos DB, make sure to select [strong consistency](https://docs.microsoft.com/en-us/azure/cosmos-db/consistency-levels). Otherwise, the algorithm would not work as the deduplication checks might be executed against a stale version of the store. If you enjoyed our [previous post on model checking](https://exactly-once.github.io/posts/model-checking-exactly-once/), you might want to read about [TLA+ models of Cosmos DB consistency levels](https://github.com/Azure/azure-cosmos-tla).
 
 Last but not least, if you are AWS an obvious choice might seem to be S3 but in fact it would lead to an incorrect behavior. The [S3 consistency model](https://docs.aws.amazon.com/AmazonS3/latest/dev/Introduction.html#ConsistencyModel) guarantees strong consistency (reads always return the latest state) only for keys which have not been previously read. In other words, if you `PUT` to a key, a subsequent `GET` is guaranteed to return the current value. But if you `GET` a key first, then `PUT`, and `GET` again, you can get a stale value -- the one returned by the first `GET`. Unfortunately this is exactly the flow required by our algorithm. Fortunately Dynamo DB is a good alternative.
 
