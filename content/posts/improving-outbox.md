@@ -1,4 +1,10 @@
-# Improving the Outbox
+---
+layout: post
+title: Improving outbox 
+date: 2020-07-24
+author: Tomek Masternak, Szymon Pobiega
+draft: false
+---
 
 In [one of the previous posts](https://exactly-once.github.io/posts/outbox/) we introduced the Outbox pattern. The Outbox implements the consistent messaging idea by storing the ID of the incoming message and the collection of outgoing messages in the outbox records inside the application database. The correctness of the Outbox behavior depends on the ability to tap into the application state change transaction. The big advantage of this pattern is its relative simplicity, compared to alternative solutions. Worth noticing is also the fact that, at least in the .NET world, there is a high-quality implementation readily available in NServiceBus. In fact NServiceBus has the support for the Outbox pattern since version 5 (which dates back to September 2014) and there are thousands of endpoints running the Outbox algorithm in the wild without any problems. So why should we change anything? 
 

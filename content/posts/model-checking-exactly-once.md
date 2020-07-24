@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Model checking exactly-once 
-date: 2020-06-18
+date: 2020-07-18
 author: Tomek Masternak, Szymon Pobiega
 draft: false
 ---
