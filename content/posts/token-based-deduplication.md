@@ -1,3 +1,11 @@
+---
+layout: post
+title: Token-based deduplication 
+date: 2020-08-27
+author: Tomek Masternak, Szymon Pobiega
+draft: false
+---
+
 # Token-based deduplication
 
 One problem left unsolved by our previous attempts at designing a deduplication solution is the non-deterministic nature of data eviction. We know we can't keep the deduplication data forever but when can we safely delete it? Unfortunately there is no good answer. The longer we keep the data, the less likely we are to miss a duplicate message. Fortunately there is a way to solve the problem.
