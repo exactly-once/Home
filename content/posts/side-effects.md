@@ -18,15 +18,15 @@ Let's think about requirements for correctly applying the side effects. Fist, **
 
 Third condition is less obvious. Because we need to always take into account possibility of attempting to process the same logical message concurrently by multiple threads, we need to ensure that the **side effects that are published all come from the same processing attempt**. For example if the message handler creates two blobs, we don't want to allow situation where each blob is created by different processing attempt as this could lead to inconsistent state if these handlers were not purely deterministic. 
 
-Fourth and the last condition is about efficiency of storage usage. We don't want to crate any garbage so **by the time the message is processed successfully (consumed), all side effects that resulted from non-successful attempts should have been cleaned up**.
+The fourth and last condition deals with the efficiency of storage usage. We don't want to create any garbage so **by the time the message is processed successfully (consumed), all side effects that resulted from non-successful attempts should have been cleaned up**.
 
 ### Sketch of an algorithm
 
 Looking at the above conditions we can try to sketch an algorithm. In [the previous approach](https://exactly-once.github.io/posts/token-based-deduplication/) we had our side effects (outgoing messages) serialized and stored in the transactional store alongside the business data. This is not a great approach if we want to support generalized side effects as they can be of significant size. A PFD document we want to store or send via e-mail can easily weigh few megabytes. There is no way we can include things like this as part of a document stored in CosmosDB.
 
-That means we need to actually create side effects as we execute the handler and not store them serialized. But how about our second rule of not having them visible before the message is processed? Here's the trick. **Visible is not the same as created**. We can create a blob but before we tell about it, there is no side effect as far as other endpoints of the system are concerned.
+That means we need to create side effects as the handler is executed rather than serializing and storing them is a persistent store. But how about our second rule of not having them visible before the message is processed? Here's the trick. **Visible is not the same as created**. We can create a blob but before we tell about it, there is no side effect as far as other endpoints of the system are concerned.
 
-So the first step is to create the side effect. That means uploading the bytes to create a blob document or creating a token if we are sending a message. This part is done when the code of the message handler executes
+So the first step is to create the side effect. That means uploading the bytes to create a blob document or creating a token if we are sending a message. This part happens when the message handler executes:
 
 ```c#
 public async Task Handle(MyMessage message, IHandlerContext context)
@@ -59,7 +59,7 @@ Take a look at the message handling code above. Does it satisfy all conditions? 
 
 In this example T1 published the blob with contents created by T2. We risk creating inconsistent state if the handler used any non-deterministic API (query external service, use system clock, generate Guid etc.). Now let's look at the message sending. Both threads created the message payload blobs but only one managed to publish its messages. That means that the other blob becomes garbage. Let's try to fix it.
 
-In order to satisfy the third (non-mixing side effects) condition we need to generate unique copies of side effects in each attempt. When we want to create a blob, we can't just create it under a hard-coded name like `pictures-of-cats.pdf`. We need to include a unique component in the URL (GUID). This way each attempt crates its own document and the attempt that wins publishes the URL to the blob it generated.
+In order to satisfy the third (non-mixing side effects) condition, we need to generate unique copies of side effects in each attempt. When we want to create a blob, we can't just create it under a hard-coded name like `pictures-of-cats.pdf`. We need to include a unique component in the URL (GUID). This way each attempt creates its own document and the attempt that wins publishes the URL to the blob it generated.
 
 ```c#
 public async Task Handle(MyMessage message, IHandlerContext context)
@@ -108,6 +108,6 @@ Let's recap what the conditions for a correct side effects algorithm are:
  - side effects that are published all come from the same processing attempt
  - by the time the message is processed successfully (consumed), all side effects that resulted from non-successful attempts are cleaned up
 
-Our sketched up algorithm satisfies all four. The side effects are made visible when the transactional store transaction completes. All side effects come from the same (successful) attempt because we ensure their identity contains a unique value. We make sure to leave no garbage by recording the identity of side effects before thy are created and cleaning up data generated by failed attempts.
+Our sketched up algorithm satisfies all four. The side effects are made visible when the transactional store transaction completes. All side effects come from the same (successful) attempt because we ensure their identity contains a unique value. We make sure to leave no garbage by recording the identity of side effects before they are created and cleaning up data generated by failed attempts.
 
 Two types of side effects we mentioned so far were outgoing messages and blobs. In the next power we will take a closer look at another type of side effect - a HTTP request/response. While we have you here, we would like to invite you to our workshops. On Feb 18-19 you can join us a [dotnetdays.ro](https://dotnetdays.ro/Workshops) and on Mar 12-12 on [NDC Workshops](https://ndcworkshops.com/slot/reliable-event-driven-microservices).
