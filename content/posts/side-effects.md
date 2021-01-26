@@ -1,3 +1,11 @@
+---
+layout: post
+title: Side effects
+date: 2021-01-21
+author: Szymon Pobiega
+draft: false
+---
+
 ### Side effects
 
 In [the previous post](https://exactly-once.github.io/posts/token-based-deduplication/) we introduced the token-based deduplication approach. It inverts the traditional principle of deduplication. Instead of dropping a message if another copy of that same message is known to have been processed, the token-based approach drops a message if there is no token for processing it. In other words it uses negative (token does not exist), rather than positive (processing information exists), proof of duplication. 
