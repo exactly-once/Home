@@ -53,9 +53,12 @@ The answer is ... we don't care if all processes have the same internal state or
 
 #### C0 and C1 that are one step apart
 
-> By an easy induction, there exist neighbors Co, Ci E, such that Di = e(Ci) is i-valent, i = 0, 1.
+> (...) D contains both 0-valent and 1-valent configurations.
+> Call two configurations neighbors if one results from the other in a single step. By an easy induction, there exist neighbors Co, Ci E, such that Di = e(Ci) is i-valent, i = 0, 1.
 
+Why is it true that there have to be C0 and C1 that are only one step aparts? Well if C is the configuration we start from than all reachable configurations through schedules without `e` form a DAG. Nodes are configurations of the system and edges connect configurations if there is an event that can lead from configuraiton to the other. D as defined in the paper can be "visialized" as a layer of nodes atop the DAG (reachable via `e` event). We already know that D contains both 0-valent and 1-valent configuration (let's call them D0' and D1'). Let's consider a path between C0' and C1' nodes that connect to D0' and D1' via `e`. There must be an edge `e'` on that path that connects nodes with neighroubs in D that have different valence.
 
+//TODO: a layered DAG visualization
 
 ### Proof
 
