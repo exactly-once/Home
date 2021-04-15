@@ -12,7 +12,7 @@ HTTP defines a set of operations (known as _verbs_) that help to convey the mean
 
 `GET` is expected to not cause any side effects in the target system. Of course, the implementor of a `GET` call can be evil and update the database but that would be a violation of the protocol. The reason why `GET` should not have side effects is the fact that the response to this operation type can be cached so the caller can't be sure (unless explicitly opts out from caching) if the response comes from the target server or a cache.
 
-Next, there are `PUT` and `DELETE`. These operations are expected to have idempotent implementation. This means that the caller should be able to retry calling `PUT` or `DELETE` several times and the side effects should be exactly as if they called it once. Again, there is nothing that prevents an evil programmer from violating this protocol assumption. Moreover, there is nothing in the protocol or common HTTP libraries that helps the implementor to comply with the idempotence requirements.
+Next, there are `PUT` and `DELETE`. These operations are expected to have idempotent implementations. This means that the caller should be able to retry calling `PUT` or `DELETE` several times and the side effects should be exactly as if they called it once. Again, there is nothing that prevents an evil programmer from violating this protocol assumption. Moreover, there is nothing in the protocol or common HTTP libraries that helps the implementor to comply with the idempotence requirements.
 
 Last but not least, `POST` carries no idempotency guarantees whatsoever. This is why `POST` is frequently used when the implementation can't provide any such guarantees or the service provider could not care enough to provide them. 
 
@@ -50,7 +50,7 @@ The first phase is using `PUT` to transmit the request payload created by the us
 
 #### Phase 2 - POST
 
-The second phase happens during the side effects publication. In this phase the caller issues `POST` to the same URL as previous `PUT`. This is the moment when the target service actually does the processing. The response is not returned directly but stored by the target services in a blob.
+The second phase happens during the side effects publication. In this phase the caller issues `POST` to the same URL as previous `PUT`. This is the moment when the target service actually does the processing. The response is not returned directly but stored by the target service in a blob.
 
 #### Phase 3 - GET
 
@@ -66,7 +66,7 @@ All good but where is the deduplication? You are right, we have just defined how
 
 If the caller fails after the `PUT` phase and the message is retried, another request is generated and transmitted via `PUT`. At the end of the successful attempt all abandoned requests are removed via `DELETE`. No problem with duplication here.
 
-If the caller fails after the `POST` phase the same `POST` will be issued again because it has been persisted as a side effect awaiting publication. This means that the server can receive multiple `POST` calls for a single request transmitted previously by `PUT`. How can we deal with that? Careful readers can see an analogy to token-based-deduplication here. The request stored as a blob in the target service is equivalent to a token. It serves as the deduplication state. The implementation of the service marks the request as processed when it executes the `POST` so that subsequent `POST`s are considered duplicates and ignored. In addition to marking the request as processed, the `POST` also stores the response in a dedicated blob so that it can be retrieved by the caller via `GET`.
+If the caller fails after the `POST` phase the same `POST` will be issued again because it has been persisted as a side effect awaiting publication. This means that the server can receive multiple `POST` calls for a single request transmitted previously by `PUT`. How can we deal with that? Careful readers can see an analogy to token-based-deduplication here. The request stored as a blob in the target service **is equivalent to a token**. It serves as the deduplication state. The implementation of the service marks the request as processed when it executes the `POST` so that subsequent `POST`s are considered duplicates and ignored. In addition to marking the request as processed, the `POST` also stores the response in a dedicated blob so that it can be retrieved by the caller via `GET`.
 
 The next phase can be retried any number of times because it only involves the `GET` to retrieve the already generated response. Finally, the `DELETE` that removes all information related to the interaction (both the request and the response stored by the service) can also be retried any number of times as deleting a thing is idempotent by definition.
 
@@ -175,3 +175,7 @@ As you can see, the response is available via `context.GetResponse()`. Based on 
 ### Summary
 
 We have shown that [deduplication algorithms that have constant storage requirements are possible](https://exactly-once.github.io/posts/token-based-deduplication/). Later we have shown how these algorithms can be [generalized to include not only sending of outgoing messages but any time of side effects](https://exactly-once.github.io/posts/side-effects/), such as storing blobs. In this episode, we proposed an extension to the algorithm that allows integrating exactly-once messaging systems via HTTP. You probably know at what we are hinting at now. It is possible and, we believe, it is necessary, to start thinking about end-to-end exactly-once processing guarantees in distributed system design. Distributed transactions are probably not coming back any time soon, we need to get over it. We also need to acknowledge that *just make your business logic idempotent* is a terrible piece of advice. Keep calm and embrace exactly-once. 
+
+### Workshops
+
+On May 12-13 we are running an online workshop on reliable message processing. The details on the workhop can be found [here](https://ndcworkshops.com/slot/reliable-event-driven-microservices). If you like what we publish here, we invite you to join us for the workshop. This time we decided to run it in the Americas time zone so both Europeans and Americans can attend.
