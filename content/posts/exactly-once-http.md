@@ -88,7 +88,7 @@ The next phase can be retried any number of times because it only involves the `
 
 We have introduced an HTTP-based protocol for executing operations exactly-once. 
 
-![Overview](exacly-once-http-phase-four-phases.png)
+![Overview](exacly-once-http-four-phases.png)
 
 The protocol is meant to be used in interactions between message-driven systems. Here's the code that initiates the HTTP interaction:
 
