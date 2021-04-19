@@ -46,21 +46,31 @@ Our proposal is to use a dedicated _follow-up message_ to implement an HTTP call
 
 When the _follow-up message_ is picked up, the HTTP response is retrieved and made the available as the context for processing. The _follow-up message_ carries the context from the first phase (sending request) to the second phase (processing response).
 
+![Overview](exacly-once-two-stages.png)
+
 In reality, it becomes slightly more complex as we need to break down the HTTP interaction into four, not two, phases. From the user code perspective, these phases are not visible and implemented as an infrastructural concern. All the user sees is the preparation of a request and processing of the response. The user does not control the _verbs_ used. All they know is that they call the remote service *in a way that is guaranteed to be idempotent*.
 
 #### Phase 1 - PUT
+
+![Overview](exacly-once-http-phase-1-put.png)
 
 The first phase is using `PUT` to transmit the request payload created by the user code to the remote service. This is done immediately in the message handling code in the same way as creating a blob works (described in [the previous post](https://exactly-once.github.io/posts/side-effects/)). The cleanup mechanism ensures that requests that are associated with abandoned message processing attempts are removed.
 
 #### Phase 2 - POST
 
+![Overview](exacly-once-http-phase-2-post.png)
+
 The second phase happens during the side effects publication. In this phase the caller issues `POST` to the same URL as previous `PUT`. This is the moment when the target service actually does the processing. The response is not returned directly but stored by the target service in a blob.
 
 #### Phase 3 - GET
 
+![Overview](exacly-once-http-phase-3-get.png)
+
 The third phase happens before the _follow-up message_ is passed to the message handler. The infrastructure issues `GET` to obtain the response generated in the previous phase. That response is added to the message handling context.
 
 #### Phase 4 - DELETE
+
+![Overview](exacly-once-http-phase-4-delete.png)
 
 The fourth phase of the HTTP interaction happens during the side effects publication stage of processing the _follow-up message_. A `DELETE` is issued removes the response information from the service, making sure that the whole interaction leaves no garbage.
 
@@ -76,7 +86,11 @@ The next phase can be retried any number of times because it only involves the `
 
 ### Implementation
 
-We have introduced an HTTP-based protocol for executing operations exactly-once. The protocol is meant to be used in interactions between message-driven systems. Here's the code that initiates the HTTP interaction:
+We have introduced an HTTP-based protocol for executing operations exactly-once. 
+
+![Overview](exacly-once-http-phase-four-phases.png)
+
+The protocol is meant to be used in interactions between message-driven systems. Here's the code that initiates the HTTP interaction:
 
 ```c#
 public async Task Handle(BillCustomer message, IMessageHandlerContext context)
