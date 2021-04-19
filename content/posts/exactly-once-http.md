@@ -38,7 +38,7 @@ The protocol we propose is heavily influenced by the [token-based-deduplication]
 
 It runs in the context of the [side effects handling framework](https://exactly-once.github.io/posts/side-effects/) we described recently and assumes that the caller of the HTTP API is a message handler.
 
-[image: message handler->http->message producer]
+![Overview](exacly-once-http-overview.png)
 
 As shown above, the scenario we try to address is an HTTP bridge between two message-driven systems or two parts of a single system. The first question is, how does one invoke the inherently two-stage HTTP API in the context of handling a message? The HTTP interaction consists of preparing and sending the request _and_ receiving and processing the response. Both of these can potentially be associated with a state change of the caller. The problem is that the message deduplication protocols we described so far only allow for *one state change transaction per message processed*. It looks like calling an HTTP endpoint would require two such changes.
 
