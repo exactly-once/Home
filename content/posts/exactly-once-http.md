@@ -6,6 +6,10 @@ One of the most common system integration scenarios is executing a function remo
 
 The basic building blocks of the HTTP protocol and REST approach are not enough to guarantee exactly-once execution in such a scenario. Let's remind ourselves what operations we have at our disposal.
 
+### Shameless plug -- workshops
+
+On May 12-13 we are running an online workshop on reliable message processing. The details on the workhop can be found [here](https://ndcworkshops.com/slot/reliable-event-driven-microservices). If you like what we publish here, we invite you to join us for the workshop. This time we decided to run it in the Americas time zone so both Europeans and Americans can attend.
+
 ### HTTP
 
 HTTP defines a set of operations (known as _verbs_) that help to convey the meaning of a given API call. They also have some specific constraints. The most commonly known and used are `GET`, `POST`, `PUT` and `DELETE`. 
@@ -174,8 +178,4 @@ As you can see, the response is available via `context.GetResponse()`. Based on 
 
 ### Summary
 
-We have shown that [deduplication algorithms that have constant storage requirements are possible](https://exactly-once.github.io/posts/token-based-deduplication/). Later we have shown how these algorithms can be [generalized to include not only sending of outgoing messages but any time of side effects](https://exactly-once.github.io/posts/side-effects/), such as storing blobs. In this episode, we proposed an extension to the algorithm that allows integrating exactly-once messaging systems via HTTP. You probably know at what we are hinting at now. It is possible and, we believe, it is necessary, to start thinking about end-to-end exactly-once processing guarantees in distributed system design. Distributed transactions are probably not coming back any time soon, we need to get over it. We also need to acknowledge that *just make your business logic idempotent* is a terrible piece of advice. Keep calm and embrace exactly-once. 
-
-### Workshops
-
-On May 12-13 we are running an online workshop on reliable message processing. The details on the workhop can be found [here](https://ndcworkshops.com/slot/reliable-event-driven-microservices). If you like what we publish here, we invite you to join us for the workshop. This time we decided to run it in the Americas time zone so both Europeans and Americans can attend.
+We have shown that [deduplication algorithms that have constant storage requirements are possible](https://exactly-once.github.io/posts/token-based-deduplication/). Later we have shown how these algorithms can be [generalized to include not only sending of outgoing messages but any time of side effects](https://exactly-once.github.io/posts/side-effects/), such as storing blobs. In this episode, we proposed an extension to the algorithm that allows integrating exactly-once messaging systems via HTTP. You probably know at what we are hinting at now. It is possible and, we believe, it is necessary, to start thinking about end-to-end exactly-once processing guarantees in distributed system design. Distributed transactions are probably not coming back any time soon, we need to get over it. We also need to acknowledge that *just make your business logic idempotent* is a terrible piece of advice. Keep calm, embrace exactly-once, and dont't forget about [the workshop](https://ndcworkshops.com/slot/reliable-event-driven-microservices).
