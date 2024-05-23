@@ -1,3 +1,11 @@
+---
+layout: post
+title: Token-based deduplication 
+date: 2024-05-23
+author: Szymon Pobiega
+draft: false
+---
+
 Token-driven distributed business processes
 
 Long ago (1987) some industry thought leaders like Hector Garcia-Molina realized that transactions are not a suitable way of maintaining consistency of long-running processes. Despite this fact, the reliance on transactions for consistency of writes done across multiple processes over long timeframes continued with technologies such as Microsoft Distributed Transaction Coordinator or XA implementing the 2-phase commit protocol. 
